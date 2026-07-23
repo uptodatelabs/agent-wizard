@@ -32,6 +32,8 @@ agent-wizard configure
 
 | Tool | Status |
 |------|--------|
+| OpenClaw | 🔜 Coming Soon |
+| Hermes | 🔜 Coming Soon |
 | Claude Code | ✅ Supported |
 | Cursor | ✅ Supported |
 | GitHub Copilot | ✅ Supported |
