@@ -6,3 +6,5 @@ export { HermesAdapter } from './adapters/hermes';
 export type { HermesConfig } from './adapters/hermes';
 export { ClaudeCodeAdapter } from './adapters/claude-code';
 export type { ClaudeCodeSettings } from './adapters/claude-code';
+export { CursorAdapter } from './adapters/cursor';
+export type { CursorRule, CursorConfig } from './adapters/cursor';
