@@ -14,7 +14,7 @@ export interface ProjectMetadata {
   language: string[];
 }
 
-export type ProjectType = 'web' | 'mobile' | 'cli' | 'library' | 'api';
+export type ProjectType = 'web' | 'mobile' | 'cli' | 'library' | 'api' | 'unknown';
 
 export interface Agent {
   id: string;
