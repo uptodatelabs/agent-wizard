@@ -8,3 +8,5 @@ export { ClaudeCodeAdapter } from './adapters/claude-code';
 export type { ClaudeCodeSettings } from './adapters/claude-code';
 export { CursorAdapter } from './adapters/cursor';
 export type { CursorRule, CursorConfig } from './adapters/cursor';
+export { CopilotAdapter } from './adapters/copilot';
+export type { CopilotInstructions, CopilotPathInstruction, CopilotConfig } from './adapters/copilot';
