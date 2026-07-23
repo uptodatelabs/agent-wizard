@@ -32,7 +32,7 @@
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/uptodatelabs/AgentWizard.git"
+    "url": "https://github.com/uptodatelabs/agent-wizard.git"
   },
   "engines": {
     "node": ">=18.0.0"
