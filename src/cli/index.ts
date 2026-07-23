@@ -2,8 +2,11 @@
 
 import { Command } from 'commander';
 import chalk from 'chalk';
+import inquirer from 'inquirer';
 import { ConfigWizard } from '../core/wizard';
 import { ProjectDetector } from '../core/detector';
+import { ProfileManagerImpl } from '../core/profile-manager';
+import { ProfileSync } from '../core/sync';
 import { OpenClawAdapter } from '../adapters/openclaw';
 import { HermesAdapter } from '../adapters/hermes';
 import { ClaudeCodeAdapter } from '../adapters/claude-code';
@@ -12,6 +15,8 @@ import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter } from '../adapters/aider';
 
 const program = new Command();
+const profileManager = new ProfileManagerImpl();
+const profileSync = new ProfileSync();
 
 program
   .name('agent-wizard')
@@ -178,6 +183,381 @@ program
     }
     
     console.log('');
+  });
+
+// Profile command group
+const profileCmd = program
+  .command('profile')
+  .description('Manage profiles');
+
+// Profile list
+profileCmd
+  .command('list')
+  .description('List all profiles')
+  .action(async () => {
+    console.log(chalk.bold.cyan('\n📋 Profiles\n'));
+    
+    try {
+      const profiles = await profileManager.listProfiles();
+      
+      if (profiles.length === 0) {
+        console.log(chalk.gray('No profiles found.'));
+        console.log('Create one with: ' + chalk.cyan('agent-wizard profile create <name>'));
+        return;
+      }
+      
+      const defaultProfile = await profileManager.getDefaultProfile();
+      
+      for (const profile of profiles) {
+        const isDefault = profile.name === defaultProfile.name;
+        const marker = isDefault ? chalk.yellow(' (default)') : '';
+        console.log(`  ${chalk.green(profile.name)}${marker}`);
+        console.log(`    ${chalk.gray(profile.description)}`);
+        console.log(`    Agents: ${profile.agents.length}`);
+        console.log('');
+      }
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Profile create
+profileCmd
+  .command('create <name>')
+  .description('Create a new profile')
+  .option('-d, --description <desc>', 'Profile description')
+  .action(async (name: string, options: { description?: string }) => {
+    console.log(chalk.bold.cyan(`\n➕ Creating profile: ${name}\n`));
+    
+    try {
+      const existing = await profileManager.readProfile(name);
+      if (existing) {
+        console.error(chalk.red(`Profile '${name}' already exists.`));
+        process.exit(1);
+      }
+
+      const { description } = await inquirer.prompt([
+        {
+          type: 'input',
+          name: 'description',
+          message: 'Profile description:',
+          default: options.description || '',
+        },
+      ]);
+
+      const profile = {
+        name,
+        description: description || `${name} profile`,
+        created: new Date().toISOString(),
+        updated: new Date().toISOString(),
+        agents: [],
+        permissions: { allow: [], deny: [] },
+      };
+
+      await profileManager.writeProfile(profile);
+      console.log(chalk.green(`\n✅ Profile '${name}' created!\n`));
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Profile show
+profileCmd
+  .command('show <name>')
+  .description('Show profile details')
+  .action(async (name: string) => {
+    console.log(chalk.bold.cyan(`\n📄 Profile: ${name}\n`));
+    
+    try {
+      const profile = await profileManager.readProfile(name);
+      if (!profile) {
+        console.error(chalk.red(`Profile '${name}' not found.`));
+        process.exit(1);
+      }
+
+      console.log(`  Name: ${chalk.green(profile.name)}`);
+      console.log(`  Description: ${chalk.gray(profile.description)}`);
+      console.log(`  Created: ${chalk.gray(profile.created)}`);
+      console.log(`  Updated: ${chalk.gray(profile.updated)}`);
+      
+      if (profile.agents.length > 0) {
+        console.log(chalk.bold('\n  Agents:'));
+        for (const agent of profile.agents) {
+          const status = agent.enabled ? chalk.green('✓') : chalk.red('✗');
+          console.log(`    ${status} ${chalk.cyan(agent.name)} (${agent.tool})`);
+          
+          if (Object.keys(agent.settings).length > 0) {
+            console.log(`      Settings: ${chalk.gray(JSON.stringify(agent.settings))}`);
+          }
+        }
+      } else {
+        console.log(chalk.gray('\n  No agents configured.'));
+      }
+      
+      console.log('');
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Profile delete
+profileCmd
+  .command('delete <name>')
+  .description('Delete a profile')
+  .option('-f, --force', 'Skip confirmation')
+  .action(async (name: string, options: { force?: boolean }) => {
+    try {
+      const profile = await profileManager.readProfile(name);
+      if (!profile) {
+        console.error(chalk.red(`Profile '${name}' not found.`));
+        process.exit(1);
+      }
+
+      if (!options.force) {
+        const { confirmed } = await inquirer.prompt([
+          {
+            type: 'confirm',
+            name: 'confirmed',
+            message: `Delete profile '${name}'?`,
+            default: false,
+          },
+        ]);
+
+        if (!confirmed) {
+          console.log(chalk.gray('Cancelled.'));
+          return;
+        }
+      }
+
+      await profileManager.deleteProfile(name);
+      console.log(chalk.green(`\n✅ Profile '${name}' deleted.\n`));
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Profile use
+profileCmd
+  .command('use <name>')
+  .description('Set default profile')
+  .action(async (name: string) => {
+    try {
+      await profileManager.setDefaultProfile(name);
+      console.log(chalk.green(`\n✅ Default profile set to '${name}'.\n`));
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Profile export
+profileCmd
+  .command('export <name>')
+  .description('Export profile to stdout')
+  .action(async (name: string) => {
+    try {
+      const data = await profileManager.exportProfile(name);
+      console.log(data);
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Profile import
+profileCmd
+  .command('import')
+  .description('Import profile from stdin')
+  .action(async () => {
+    console.log(chalk.bold.cyan('\n📥 Importing profile...\n'));
+    
+    try {
+      const chunks: Buffer[] = [];
+      process.stdin.on('data', (chunk) => chunks.push(chunk));
+      process.stdin.on('end', async () => {
+        const data = Buffer.concat(chunks).toString();
+        const profile = await profileManager.importProfile(data);
+        console.log(chalk.green(`\n✅ Profile '${profile.name}' imported.\n`));
+      });
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Agent command group
+const agentCmd = program
+  .command('agent')
+  .description('Manage agents in profiles');
+
+// Agent add
+agentCmd
+  .command('add <profile> <tool>')
+  .description('Add agent to profile')
+  .option('-n, --name <name>', 'Agent name')
+  .action(async (profileName: string, tool: string, options: { name?: string }) => {
+    console.log(chalk.bold.cyan(`\n➕ Adding ${tool} agent to profile '${profileName}'\n`));
+    
+    try {
+      const profile = await profileManager.readProfile(profileName);
+      if (!profile) {
+        console.error(chalk.red(`Profile '${profileName}' not found.`));
+        process.exit(1);
+      }
+
+      const agent = await profileManager.createAgentProfile(profileName, tool, options.name);
+      console.log(chalk.green(`\n✅ Agent '${agent.name}' added to profile '${profileName}'.\n`));
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Agent remove
+agentCmd
+  .command('remove <profile> <agentId>')
+  .description('Remove agent from profile')
+  .action(async (profileName: string, agentId: string) => {
+    try {
+      await profileManager.removeAgent(profileName, agentId);
+      console.log(chalk.green(`\n✅ Agent '${agentId}' removed from profile '${profileName}'.\n`));
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Agent config
+agentCmd
+  .command('config <profile> <agentId> <key> <value>')
+  .description('Update agent setting')
+  .action(async (profileName: string, agentId: string, key: string, value: string) => {
+    try {
+      // Parse value (try JSON, then string)
+      let parsedValue: any;
+      try {
+        parsedValue = JSON.parse(value);
+      } catch {
+        parsedValue = value;
+      }
+
+      await profileManager.updateAgentSettings(profileName, agentId, key, parsedValue);
+      console.log(chalk.green(`\n✅ Setting '${key}' updated in agent '${agentId}'.\n`));
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Agent list
+agentCmd
+  .command('list <profile>')
+  .description('List agents in profile')
+  .action(async (profileName: string) => {
+    console.log(chalk.bold.cyan(`\n📋 Agents in profile: ${profileName}\n`));
+    
+    try {
+      const profile = await profileManager.readProfile(profileName);
+      if (!profile) {
+        console.error(chalk.red(`Profile '${profileName}' not found.`));
+        process.exit(1);
+      }
+
+      if (profile.agents.length === 0) {
+        console.log(chalk.gray('No agents configured.'));
+        console.log('Add one with: ' + chalk.cyan(`agent-wizard agent add ${profileName} <tool>`));
+        return;
+      }
+
+      for (const agent of profile.agents) {
+        const status = agent.enabled ? chalk.green('✓') : chalk.red('✗');
+        console.log(`  ${status} ${chalk.cyan(agent.name)} (${agent.tool})`);
+        
+        if (Object.keys(agent.settings).length > 0) {
+          console.log(`    Settings:`);
+          for (const [key, value] of Object.entries(agent.settings)) {
+            console.log(`      ${chalk.gray(key)}: ${chalk.green(JSON.stringify(value))}`);
+          }
+        }
+      }
+      
+      console.log('');
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Sync command group
+const syncCmd = program
+  .command('sync')
+  .description('Sync profiles with tool configurations');
+
+// Sync profile to tools
+syncCmd
+  .command('to-tools <profile>')
+  .description('Sync profile settings to tool configurations')
+  .action(async (profileName: string) => {
+    console.log(chalk.bold.cyan(`\n🔄 Syncing profile '${profileName}' to tools...\n`));
+    
+    try {
+      const profile = await profileManager.readProfile(profileName);
+      if (!profile) {
+        console.error(chalk.red(`Profile '${profileName}' not found.`));
+        process.exit(1);
+      }
+
+      const { success, failed } = await profileSync.syncProfileToTools(profile);
+
+      if (success.length > 0) {
+        console.log(chalk.green('Synced to:'));
+        for (const tool of success) {
+          console.log(`  ${chalk.green('✓')} ${tool}`);
+        }
+      }
+
+      if (failed.length > 0) {
+        console.log(chalk.red('\nFailed to sync:'));
+        for (const tool of failed) {
+          console.log(`  ${chalk.red('✗')} ${tool}`);
+        }
+      }
+
+      console.log('');
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Sync tools to profile
+syncCmd
+  .command('from-tools')
+  .description('Import existing tool configurations to a new profile')
+  .option('-n, --name <name>', 'Profile name', 'imported')
+  .action(async (options: { name: string }) => {
+    console.log(chalk.bold.cyan('\n📥 Importing from tool configurations...\n'));
+    
+    try {
+      const profile = await profileSync.syncToolsToProfile();
+      profile.name = options.name;
+      
+      await profileManager.writeProfile(profile);
+      
+      console.log(chalk.green(`\n✅ Profile '${profile.name}' created from existing configurations.\n`));
+      console.log('Agents imported:');
+      for (const agent of profile.agents) {
+        console.log(`  ${chalk.green('✓')} ${agent.name} (${agent.tool})`);
+      }
+      console.log('');
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
   });
 
 program.parse();
