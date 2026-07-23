@@ -7,6 +7,7 @@ import { ConfigWizard } from '../core/wizard';
 import { ProjectDetector } from '../core/detector';
 import { ProfileManagerImpl } from '../core/profile-manager';
 import { ProfileSync } from '../core/sync';
+import { StatusAdapter } from '../core/status-adapter';
 import { OpenClawAdapter } from '../adapters/openclaw';
 import { HermesAdapter } from '../adapters/hermes';
 import { ClaudeCodeAdapter } from '../adapters/claude-code';
@@ -17,6 +18,7 @@ import { AiderAdapter } from '../adapters/aider';
 const program = new Command();
 const profileManager = new ProfileManagerImpl();
 const profileSync = new ProfileSync();
+const statusAdapter = new StatusAdapter();
 
 program
   .name('agent-wizard')
@@ -559,5 +561,166 @@ syncCmd
       process.exit(1);
     }
   });
+
+// Status command group
+const statusCmd = program
+  .command('status')
+  .description('Check agent status across all tools');
+
+// Status - all tools
+statusCmd
+  .command('list')
+  .description('Show status of all tools')
+  .action(async () => {
+    console.log(chalk.bold.cyan('\n📊 Agent Status Overview\n'));
+    
+    try {
+      const data = await statusAdapter.getAllStatuses();
+      
+      // Summary
+      console.log(chalk.bold('Summary:'));
+      console.log(`  Active Tools: ${chalk.green(data.activeTools.toString())} / ${data.toolStatuses.length}`);
+      console.log(`  Total Agents: ${chalk.green(data.totalAgents.toString())}`);
+      console.log(`  Last Updated: ${chalk.gray(data.lastUpdated.toLocaleString())}`);
+      
+      console.log(chalk.bold('\nTool Status:'));
+      
+      for (const status of data.toolStatuses) {
+        const statusIcon = getStatusIcon(status.status);
+        const agentCount = status.agents.length;
+        
+        console.log(`\n  ${statusIcon} ${chalk.bold(status.toolName)}`);
+        console.log(`    Status: ${getStatusColor(status.status)}`);
+        console.log(`    Agents: ${chalk.cyan(agentCount.toString())}`);
+        console.log(`    Config: ${status.configValid ? chalk.green('Valid ✓') : chalk.red('Invalid ✗')}`);
+        
+        if (status.details.scopes) {
+          console.log(`    Scopes: ${chalk.gray(status.details.scopes.join(', '))}`);
+        }
+        if (status.details.rules !== undefined) {
+          console.log(`    Rules: ${chalk.cyan(status.details.rules.toString())}`);
+        }
+        if (status.details.profiles !== undefined) {
+          console.log(`    Profiles: ${chalk.cyan(status.details.profiles.toString())}`);
+        }
+        if (status.details.permissions) {
+          console.log(`    Permissions: ${chalk.green(status.details.permissions.allow.toString())} allow, ${chalk.red(status.details.permissions.deny.toString())} deny`);
+        }
+      }
+      
+      console.log('');
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+// Status - single tool
+statusCmd
+  .command('show <tool>')
+  .description('Show detailed status for a specific tool')
+  .action(async (tool: string) => {
+    console.log(chalk.bold.cyan(`\n📊 ${tool} Status\n`));
+    
+    try {
+      const status = await statusAdapter.getToolStatus(tool);
+      
+      if (!status) {
+        console.error(chalk.red(`Unknown tool: ${tool}`));
+        console.log('Available tools: openclaw, hermes, claude-code, cursor, copilot, aider');
+        process.exit(1);
+      }
+      
+      const statusIcon = getStatusIcon(status.status);
+      
+      console.log(`  ${statusIcon} ${chalk.bold(status.toolName)}`);
+      console.log(`  Status: ${getStatusColor(status.status)}`);
+      console.log(`  Config Path: ${chalk.gray(status.configPath)}`);
+      console.log(`  Config Valid: ${status.configValid ? chalk.green('Yes ✓') : chalk.red('No ✗')}`);
+      console.log(`  Last Checked: ${chalk.gray(status.lastChecked.toLocaleString())}`);
+      
+      if (status.agents.length > 0) {
+        console.log(chalk.bold('\n  Agents:'));
+        for (const agent of status.agents) {
+          const agentStatus = agent.status === 'active' ? chalk.green('●') : chalk.gray('○');
+          console.log(`    ${agentStatus} ${chalk.cyan(agent.name)}`);
+          if (agent.model) {
+            console.log(`      Model: ${chalk.gray(agent.model)}`);
+          }
+          if (agent.role) {
+            console.log(`      Role: ${chalk.gray(agent.role)}`);
+          }
+        }
+      } else {
+        console.log(chalk.gray('\n  No agents configured.'));
+      }
+      
+      // Details
+      if (Object.keys(status.details).length > 0) {
+        console.log(chalk.bold('\n  Details:'));
+        
+        if (status.details.scopes) {
+          console.log(`    Scopes: ${chalk.gray(status.details.scopes.join(', '))}`);
+        }
+        if (status.details.mcpServers !== undefined) {
+          console.log(`    MCP Servers: ${chalk.cyan(status.details.mcpServers.toString())}`);
+        }
+        if (status.details.hooks !== undefined) {
+          console.log(`    Hooks: ${chalk.cyan(status.details.hooks.toString())}`);
+        }
+        if (status.details.rules !== undefined) {
+          console.log(`    Rules: ${chalk.cyan(status.details.rules.toString())}`);
+        }
+        if (status.details.profiles !== undefined) {
+          console.log(`    Profiles: ${chalk.cyan(status.details.profiles.toString())}`);
+        }
+        if (status.details.instructions !== undefined) {
+          console.log(`    Main Instructions: ${status.details.instructions ? chalk.green('Yes ✓') : chalk.red('No ✗')}`);
+        }
+        if (status.details.pathInstructions !== undefined) {
+          console.log(`    Path Instructions: ${chalk.cyan(status.details.pathInstructions.toString())}`);
+        }
+        if (status.details.permissions) {
+          console.log(`    Permissions Allow: ${chalk.green(status.details.permissions.allow.toString())}`);
+          console.log(`    Permissions Deny: ${chalk.red(status.details.permissions.deny.toString())}`);
+        }
+      }
+      
+      console.log('');
+    } catch (error) {
+      console.error(chalk.red('\n❌ Error:'), error);
+      process.exit(1);
+    }
+  });
+
+function getStatusIcon(status: string): string {
+  switch (status) {
+    case 'active':
+      return chalk.green('🟢');
+    case 'configured':
+      return chalk.yellow('🟡');
+    case 'not-configured':
+      return chalk.gray('⚪');
+    case 'error':
+      return chalk.red('🔴');
+    default:
+      return chalk.gray('⚪');
+  }
+}
+
+function getStatusColor(status: string): string {
+  switch (status) {
+    case 'active':
+      return chalk.green('Active');
+    case 'configured':
+      return chalk.yellow('Configured');
+    case 'not-configured':
+      return chalk.gray('Not Configured');
+    case 'error':
+      return chalk.red('Error');
+    default:
+      return chalk.gray('Unknown');
+  }
+}
 
 program.parse();
