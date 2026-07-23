@@ -4,3 +4,5 @@ export { OpenClawAdapter } from './adapters/openclaw';
 export type { OpenClawConfig } from './adapters/openclaw';
 export { HermesAdapter } from './adapters/hermes';
 export type { HermesConfig } from './adapters/hermes';
+export { ClaudeCodeAdapter } from './adapters/claude-code';
+export type { ClaudeCodeSettings } from './adapters/claude-code';
