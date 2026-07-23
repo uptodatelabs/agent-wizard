@@ -1,12 +1,17 @@
 {
   "name": "agent-wizard",
   "version": "0.1.0",
-  "description": "AI coding assistant configuration wizard",
+  "description": "AI coding assistant configuration wizard - Set up your AI tools in minutes, not hours",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "bin": {
     "agent-wizard": "./dist/cli.js"
   },
+  "files": [
+    "dist",
+    "README.md",
+    "LICENSE"
+  ],
   "scripts": {
     "build": "tsup",
     "dev": "tsup --watch",
@@ -14,7 +19,8 @@
     "lint:fix": "eslint src --ext .ts --fix",
     "test": "vitest",
     "test:run": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "prepublishOnly": "npm run build"
   },
   "keywords": [
     "ai",
@@ -26,7 +32,11 @@
     "cursor",
     "copilot",
     "aider",
-    "cli"
+    "openclaw",
+    "hermes",
+    "cli",
+    "developer-tools",
+    "productivity"
   ],
   "author": "uptodatelabs",
   "license": "Apache-2.0",
@@ -34,6 +44,10 @@
     "type": "git",
     "url": "https://github.com/uptodatelabs/agent-wizard.git"
   },
+  "bugs": {
+    "url": "https://github.com/uptodatelabs/agent-wizard/issues"
+  },
+  "homepage": "https://github.com/uptodatelabs/agent-wizard#readme",
   "engines": {
     "node": ">=18.0.0"
   },
@@ -43,7 +57,7 @@
     "eslint": "^9.0.0",
     "tsup": "^8.0.0",
     "typescript": "^5.0.0",
-    "vitest": "^1.0.0"
+    "vitest": "^1.6.1"
   },
   "dependencies": {
     "@types/react": "^19.2.17",

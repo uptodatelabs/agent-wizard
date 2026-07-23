@@ -1,0 +1,39 @@
+# Source files
+src/
+__tests__/
+*.test.ts
+*.test.tsx
+
+# Configuration files
+tsconfig.json
+tsup.config.ts
+vitest.config.ts
+.eslintrc*
+.prettierrc*
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Git
+.git/
+.gitignore
+
+# Documentation (except README)
+docs/
+*.md
+!README.md
+
+# Dependencies
+node_modules/
+
+# Build artifacts (except dist)
+coverage/
+.nyc_output/
+.cache/
