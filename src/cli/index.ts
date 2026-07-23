@@ -723,4 +723,17 @@ function getStatusColor(status: string): string {
   }
 }
 
+// Dashboard command
+program
+  .command('dashboard')
+  .description('Launch interactive dashboard')
+  .action(async () => {
+    const React = await import('react');
+    const { render } = await import('ink');
+    const { Dashboard } = await import('../dashboard/index.js');
+    
+    const { waitUntilExit } = render(React.createElement(Dashboard));
+    await waitUntilExit();
+  });
+
 program.parse();
