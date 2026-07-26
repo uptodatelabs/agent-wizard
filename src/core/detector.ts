@@ -206,7 +206,10 @@ export class ProjectDetector {
 
   private async detectOpenClaw(): Promise<boolean> {
     try {
-      const configPath = path.join(process.cwd(), '.openclaw');
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
       await fs.access(configPath);
       return true;
     } catch {
@@ -216,7 +219,10 @@ export class ProjectDetector {
 
   private async detectHermes(): Promise<boolean> {
     try {
-      const configPath = path.join(process.cwd(), '.hermes');
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
       await fs.access(configPath);
       return true;
     } catch {
@@ -226,9 +232,22 @@ export class ProjectDetector {
 
   private async detectClaudeCode(): Promise<boolean> {
     try {
-      const configPath = path.join(process.cwd(), '.claude');
-      await fs.access(configPath);
-      return true;
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const userConfigPath = path.join(os.homedir(), '.claude', 'settings.json');
+      try {
+        await fs.access(userConfigPath);
+        return true;
+      } catch {
+        const projectConfigPath = path.join(process.cwd(), '.claude', 'settings.json');
+        try {
+          await fs.access(projectConfigPath);
+          return true;
+        } catch {
+          return false;
+        }
+      }
     } catch {
       return false;
     }
