@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import JSON5 from 'json5';
 
 export interface OpenClawConfig {
   $schema?: string;
@@ -77,7 +78,7 @@ export class OpenClawAdapter {
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
     const content = await fs.readFile(configPath, 'utf-8');
     
-    const openclawConfig: OpenClawConfig = JSON.parse(content);
+    const openclawConfig: OpenClawConfig = JSON5.parse(content);
     return this.toAgentConfig(openclawConfig);
   }
 
@@ -90,7 +91,7 @@ export class OpenClawAdapter {
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
     
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, JSON.stringify(openclawConfig, null, 2));
+    await fs.writeFile(configPath, JSON5.stringify(openclawConfig, null, 2));
   }
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {

@@ -1,4 +1,5 @@
 import * as path from 'path';
+import JSON5 from 'json5';
 import { Profile, AgentProfile } from './profile';
 import { OpenClawAdapter, OpenClawConfig } from '../adapters/openclaw';
 import { HermesAdapter, HermesConfig } from '../adapters/hermes';
@@ -84,7 +85,7 @@ export class ProfileSync {
     
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await fs.writeFile(configPath, JSON5.stringify(config, null, 2));
   }
 
   private async syncToHermes(agent: AgentProfile, _profile: Profile): Promise<void> {
