@@ -87,11 +87,22 @@ export class OpenClawAdapter {
     const path = await import('path');
     const os = await import('os');
     
-    const openclawConfig = this.fromAgentConfig(config);
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+    const existing = await this.readRaw(configPath);
+    const openclawConfig = this.fromAgentConfig(config, existing);
     
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     await fs.writeFile(configPath, JSON5.stringify(openclawConfig, null, 2));
+  }
+
+  private async readRaw(configPath: string): Promise<Partial<OpenClawConfig>> {
+    const fs = await import('fs/promises');
+    try {
+      const content = await fs.readFile(configPath, 'utf-8');
+      return JSON5.parse(content) as Partial<OpenClawConfig>;
+    } catch {
+      return {};
+    }
   }
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
@@ -141,28 +152,40 @@ export class OpenClawAdapter {
     };
   }
 
-  private fromAgentConfig(config: AgentConfig): OpenClawConfig {
-    const entries: Record<string, any> = {};
-    
+  private fromAgentConfig(config: AgentConfig, existing: Partial<OpenClawConfig> = {}): OpenClawConfig {
+    const entries: Record<string, any> = { ...(existing.agents?.entries || {}) };
+
     for (const agent of config.agents) {
       entries[agent.id] = {
+        ...entries[agent.id],
         identity: {
+          ...entries[agent.id]?.identity,
           name: agent.name,
         },
       };
     }
 
+    const defaults = existing.agents?.defaults || { workspace: '~/.openclaw/workspace' };
+    const primaryModel = config.agents[0]?.model;
+
     return {
+      ...existing,
+      $schema: existing.$schema,
       agents: {
         defaults: {
-          workspace: '~/.openclaw/workspace',
+          ...defaults,
+          workspace: defaults.workspace || '~/.openclaw/workspace',
+          ...(primaryModel ? { model: { primary: primaryModel, ...defaults.model } } : {}),
         },
         entries,
       },
+      channels: existing.channels,
+      models: existing.models,
       tools: {
-        allow: config.permissions.allow,
-        deny: config.permissions.deny,
+        allow: config.permissions.allow.length > 0 ? config.permissions.allow : (existing.tools?.allow || []),
+        deny: config.permissions.deny.length > 0 ? config.permissions.deny : (existing.tools?.deny || []),
       },
+      mcp: existing.mcp,
     };
   }
 }

@@ -58,86 +58,110 @@ export class ProfileSync {
   }
 
   private async syncToOpenClaw(agent: AgentProfile, profile: Profile): Promise<void> {
-    const config: OpenClawConfig = {
-      agents: {
-        defaults: {
-          workspace: agent.settings.workspace || '~/.openclaw/workspace',
-          model: {
-            primary: agent.settings.model || 'anthropic/claude-sonnet-4-6',
-          },
-        },
-        entries: {
-          [agent.id]: {
-            identity: {
-              name: agent.name,
-            },
-          },
-        },
-      },
-      tools: {
-        allow: profile.permissions.allow,
-        deny: profile.permissions.deny,
-      },
-    };
-
     const fs = await import('fs/promises');
     const os = await import('os');
-    
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+    const existing = await this.readJson5<Partial<OpenClawConfig>>(configPath);
+
+    const entries = { ...(existing.agents?.entries || {}) };
+    entries[agent.id] = {
+      ...entries[agent.id],
+      identity: { ...entries[agent.id]?.identity, name: agent.name },
+    };
+
+    const merged: OpenClawConfig = {
+      ...existing,
+      agents: {
+        defaults: {
+          ...existing.agents?.defaults,
+          workspace: existing.agents?.defaults?.workspace || agent.settings.workspace || '~/.openclaw/workspace',
+          model: {
+            primary: agent.settings.model || existing.agents?.defaults?.model?.primary || 'anthropic/claude-sonnet-4-6',
+            ...existing.agents?.defaults?.model,
+          },
+        },
+        entries,
+      },
+      channels: existing.channels,
+      models: existing.models,
+      tools: {
+        allow: profile.permissions.allow.length > 0 ? profile.permissions.allow : (existing.tools?.allow || []),
+        deny: profile.permissions.deny.length > 0 ? profile.permissions.deny : (existing.tools?.deny || []),
+      },
+      mcp: existing.mcp,
+    };
+
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, JSON5.stringify(config, null, 2));
+    await fs.writeFile(configPath, JSON5.stringify(merged, null, 2));
   }
 
   private async syncToHermes(agent: AgentProfile, _profile: Profile): Promise<void> {
-    const config: HermesConfig = {
+    const fs = await import('fs/promises');
+    const yaml = await import('yaml');
+    const os = await import('os');
+    const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
+    const existing = await this.readYaml<Partial<HermesConfig>>(configPath);
+
+    const personalities = { ...(existing.agent?.personalities || {}) };
+    if (agent.settings.instructions !== undefined) {
+      personalities[agent.name] = agent.settings.instructions;
+    } else if (!personalities[agent.name]) {
+      personalities[agent.name] = '';
+    }
+
+    const merged: HermesConfig = {
+      ...existing,
       model: {
-        default: agent.settings.model || 'anthropic/claude-opus-4.6',
-        provider: 'auto',
+        ...existing.model,
+        default: agent.settings.model || existing.model?.default || 'anthropic/claude-opus-4.6',
+        provider: existing.model?.provider || 'auto',
       },
-      terminal: {
+      terminal: existing.terminal || {
         backend: agent.settings.terminal?.backend || 'local',
         cwd: '.',
         timeout: agent.settings.terminal?.timeout || 180,
       },
-      compression: {
-        enabled: true,
-        threshold: 0.50,
-      },
-      memory: {
-        memory_enabled: true,
-        user_profile_enabled: true,
-      },
+      compression: existing.compression || { enabled: true, threshold: 0.50 },
+      memory: existing.memory || { memory_enabled: true, user_profile_enabled: true },
+      skills: existing.skills,
       agent: {
-        max_turns: 60,
-        verbose: false,
-        reasoning_effort: agent.settings.reasoning_effort || 'medium',
+        ...existing.agent,
+        max_turns: existing.agent?.max_turns || 60,
+        verbose: existing.agent?.verbose || false,
+        reasoning_effort: agent.settings.reasoning_effort || existing.agent?.reasoning_effort || 'medium',
+        personalities,
       },
     };
 
-    const fs = await import('fs/promises');
-    const yaml = await import('yaml');
-    const os = await import('os');
-    
-    const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, yaml.stringify(config));
+    await fs.writeFile(configPath, yaml.stringify(merged));
   }
 
   private async syncToClaudeCode(agent: AgentProfile, profile: Profile): Promise<void> {
-    const config: ClaudeCodeSettings = {
-      $schema: 'https://json.schemastore.org/claude-code-settings.json',
-      permissions: {
-        allow: profile.permissions.allow,
-        deny: profile.permissions.deny,
-      },
-    };
-
     const fs = await import('fs/promises');
     const os = await import('os');
-    
     const configPath = path.join(os.homedir(), '.claude', 'settings.json');
+    const existing = await this.readJson<Partial<ClaudeCodeSettings>>(configPath);
+
+    const permissions = profile.permissions.allow.length > 0 || profile.permissions.deny.length > 0
+      ? { allow: profile.permissions.allow, deny: profile.permissions.deny }
+      : existing.permissions;
+
+    const merged: ClaudeCodeSettings = {
+      ...existing,
+      $schema: existing.$schema || 'https://json.schemastore.org/claude-code-settings.json',
+      model: agent.settings.model || existing.model,
+      permissions,
+      env: existing.env,
+      hooks: existing.hooks,
+      sandbox: existing.sandbox,
+      attribution: existing.attribution,
+      autoMemoryEnabled: existing.autoMemoryEnabled,
+      companyAnnouncements: existing.companyAnnouncements,
+    };
+
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, JSON.stringify(config, null, 2));
+    await fs.writeFile(configPath, JSON.stringify(merged, null, 2));
   }
 
   private async syncToCursor(agent: AgentProfile, _profile: Profile): Promise<void> {
@@ -177,21 +201,55 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
   }
 
   private async syncToAider(agent: AgentProfile, _profile: Profile): Promise<void> {
-    const config: AiderConfig = {
-      model: agent.settings.model || 'sonnet',
-      architect: agent.settings.architect || false,
-      'auto-commits': true,
-      'attribute-co-authored-by': true,
-      git: true,
-      lint: true,
-      'auto-lint': true,
-    };
-
     const fs = await import('fs/promises');
     const yaml = await import('yaml');
     
     const configPath = path.join(process.cwd(), '.aider.conf.yml');
-    await fs.writeFile(configPath, yaml.stringify(config));
+    const existing = await this.readYaml<Partial<AiderConfig>>(configPath);
+
+    const merged: AiderConfig = {
+      ...existing,
+      model: agent.settings.model || existing.model || 'sonnet',
+      architect: agent.settings.architect || existing.architect || false,
+    };
+    if (merged['auto-commits'] === undefined) merged['auto-commits'] = true;
+    if (merged['attribute-co-authored-by'] === undefined) merged['attribute-co-authored-by'] = true;
+    if (merged.git === undefined) merged.git = true;
+    if (merged.lint === undefined) merged.lint = true;
+    if (merged['auto-lint'] === undefined) merged['auto-lint'] = true;
+
+    await fs.writeFile(configPath, yaml.stringify(merged));
+  }
+
+  private async readJson5<T>(configPath: string): Promise<T> {
+    const fs = await import('fs/promises');
+    try {
+      const content = await fs.readFile(configPath, 'utf-8');
+      return JSON5.parse(content) as T;
+    } catch {
+      return {} as T;
+    }
+  }
+
+  private async readJson<T>(configPath: string): Promise<T> {
+    const fs = await import('fs/promises');
+    try {
+      const content = await fs.readFile(configPath, 'utf-8');
+      return JSON.parse(content) as T;
+    } catch {
+      return {} as T;
+    }
+  }
+
+  private async readYaml<T>(configPath: string): Promise<T> {
+    const fs = await import('fs/promises');
+    const yaml = await import('yaml');
+    try {
+      const content = await fs.readFile(configPath, 'utf-8');
+      return yaml.parse(content) as T;
+    } catch {
+      return {} as T;
+    }
   }
 
   async syncToolsToProfile(): Promise<Profile> {

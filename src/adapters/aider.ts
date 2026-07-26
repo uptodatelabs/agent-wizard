@@ -139,8 +139,9 @@ export class AiderAdapter {
     const path = await import('path');
     const yaml = await import('yaml');
     
-    const aiderConfig = this.fromAgentConfig(config);
     const configPath = path.join(process.cwd(), '.aider.conf.yml');
+    const existing = await this.readRaw();
+    const aiderConfig = this.fromAgentConfig(config, existing);
     
     await fs.writeFile(configPath, yaml.stringify(aiderConfig));
   }
@@ -204,8 +205,8 @@ export class AiderAdapter {
     };
   }
 
-  private fromAgentConfig(config: AgentConfig): AiderConfig {
-    const aiderConfig: AiderConfig = {};
+  private fromAgentConfig(config: AgentConfig, existing: Partial<AiderConfig> = {}): AiderConfig {
+    const aiderConfig: AiderConfig = { ...existing };
     
     if (config.agents.length > 0) {
       aiderConfig.model = config.agents[0].model;
@@ -215,12 +216,12 @@ export class AiderAdapter {
       }
     }
 
-    // Set some sensible defaults
-    aiderConfig['auto-commits'] = true;
-    aiderConfig['attribute-co-authored-by'] = true;
-    aiderConfig.git = true;
-    aiderConfig.lint = true;
-    aiderConfig['auto-lint'] = true;
+    // Only set sensible defaults when the key isn't already configured
+    if (aiderConfig['auto-commits'] === undefined) aiderConfig['auto-commits'] = true;
+    if (aiderConfig['attribute-co-authored-by'] === undefined) aiderConfig['attribute-co-authored-by'] = true;
+    if (aiderConfig.git === undefined) aiderConfig.git = true;
+    if (aiderConfig.lint === undefined) aiderConfig.lint = true;
+    if (aiderConfig['auto-lint'] === undefined) aiderConfig['auto-lint'] = true;
 
     return aiderConfig;
   }

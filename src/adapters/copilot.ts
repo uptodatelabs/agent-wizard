@@ -92,10 +92,11 @@ export class CopilotAdapter {
     
     const copilotConfig = this.fromAgentConfig(config);
     
-    // Write repository-wide instructions
+    // Write repository-wide instructions (preserve pre-existing custom content)
     const instructionsPath = path.join(process.cwd(), '.github', 'copilot-instructions.md');
     await fs.mkdir(path.dirname(instructionsPath), { recursive: true });
-    await fs.writeFile(instructionsPath, copilotConfig.instructions);
+    const merged = await this.mergeInstructions(instructionsPath, copilotConfig.instructions);
+    await fs.writeFile(instructionsPath, merged);
 
     // Write path-specific instructions
     if (copilotConfig.pathInstructions.length > 0) {
@@ -109,6 +110,28 @@ export class CopilotAdapter {
         await fs.writeFile(filePath, content);
       }
     }
+  }
+
+  private async mergeInstructions(instructionsPath: string, generated: string): Promise<string> {
+    const fs = await import('fs/promises');
+    const marker = '# AgentWizard Rules';
+    try {
+      const existing = await fs.readFile(instructionsPath, 'utf-8');
+      // Preserve any custom (non-AgentWizard-managed) content above the marker
+      const markerIndex = existing.indexOf(marker);
+      if (markerIndex >= 0) {
+        const customPart = existing.substring(0, markerIndex).trim();
+        if (customPart.length > 0) {
+          return `${customPart}\n\n${generated}\n`;
+        }
+      } else if (existing.trim().length > 0) {
+        // No AgentWizard content yet — keep existing custom instructions and append ours
+        return `${existing.trim()}\n\n${generated}\n`;
+      }
+    } catch {
+      // File doesn't exist — write fresh
+    }
+    return `${generated}\n`;
   }
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {

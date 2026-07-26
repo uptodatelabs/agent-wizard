@@ -106,11 +106,22 @@ export class ClaudeCodeAdapter {
     const path = await import('path');
     const os = await import('os');
     
-    const settings = this.fromAgentConfig(config);
     const configPath = path.join(os.homedir(), '.claude', 'settings.json');
+    const existing = await this.readRaw(configPath);
+    const settings = this.fromAgentConfig(config, existing);
     
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     await fs.writeFile(configPath, JSON.stringify(settings, null, 2));
+  }
+
+  private async readRaw(configPath: string): Promise<Partial<ClaudeCodeSettings>> {
+    const fs = await import('fs/promises');
+    try {
+      const content = await fs.readFile(configPath, 'utf-8');
+      return JSON.parse(content) as Partial<ClaudeCodeSettings>;
+    } catch {
+      return {};
+    }
   }
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
@@ -159,23 +170,26 @@ export class ClaudeCodeAdapter {
     };
   }
 
-  private fromAgentConfig(config: AgentConfig): ClaudeCodeSettings {
-    const settings: ClaudeCodeSettings = {
-      $schema: 'https://json.schemastore.org/claude-code-settings.json',
+  private fromAgentConfig(config: AgentConfig, existing: Partial<ClaudeCodeSettings> = {}): ClaudeCodeSettings {
+    const permissions = config.permissions.allow.length > 0 || config.permissions.deny.length > 0
+      ? {
+          allow: config.permissions.allow,
+          deny: config.permissions.deny,
+        }
+      : existing.permissions;
+
+    return {
+      ...existing,
+      $schema: existing.$schema || 'https://json.schemastore.org/claude-code-settings.json',
+      model: config.agents.length > 0 ? config.agents[0].model : existing.model,
+      permissions,
+      env: existing.env,
+      hooks: existing.hooks,
+      sandbox: existing.sandbox,
+      attribution: existing.attribution,
+      autoMemoryEnabled: existing.autoMemoryEnabled,
+      companyAnnouncements: existing.companyAnnouncements,
     };
-
-    if (config.agents.length > 0) {
-      settings.model = config.agents[0].model;
-    }
-
-    if (config.permissions.allow.length > 0 || config.permissions.deny.length > 0) {
-      settings.permissions = {
-        allow: config.permissions.allow,
-        deny: config.permissions.deny,
-      };
-    }
-
-    return settings;
   }
 
   async readScope(scope: 'user' | 'project' | 'local'): Promise<ClaudeCodeSettings> {

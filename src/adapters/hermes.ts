@@ -85,11 +85,23 @@ export class HermesAdapter {
     const os = await import('os');
     const yaml = await import('yaml');
     
-    const hermesConfig = this.fromAgentConfig(config);
     const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
+    const existing = await this.readRaw(configPath);
+    const hermesConfig = this.fromAgentConfig(config, existing);
     
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     await fs.writeFile(configPath, yaml.stringify(hermesConfig));
+  }
+
+  private async readRaw(configPath: string): Promise<Partial<HermesConfig>> {
+    const fs = await import('fs/promises');
+    const yaml = await import('yaml');
+    try {
+      const content = await fs.readFile(configPath, 'utf-8');
+      return yaml.parse(content) as Partial<HermesConfig>;
+    } catch {
+      return {};
+    }
   }
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
@@ -151,35 +163,39 @@ export class HermesAdapter {
     };
   }
 
-  private fromAgentConfig(config: AgentConfig): HermesConfig {
-    const personalities: Record<string, string> = {};
+  private fromAgentConfig(config: AgentConfig, existing: Partial<HermesConfig> = {}): HermesConfig {
+    const personalities: Record<string, string> = { ...(existing.agent?.personalities || {}) };
     
     for (const agent of config.agents) {
       personalities[agent.name] = agent.instructions;
     }
 
     return {
+      ...existing,
       model: {
-        default: config.agents[0]?.model || 'default',
-        provider: 'auto',
+        ...existing.model,
+        default: config.agents[0]?.model || existing.model?.default || 'default',
+        provider: existing.model?.provider || 'auto',
       },
-      terminal: {
+      terminal: existing.terminal || {
         backend: 'local',
         cwd: '.',
         timeout: 180,
       },
-      compression: {
+      compression: existing.compression || {
         enabled: true,
         threshold: 0.50,
       },
-      memory: {
+      memory: existing.memory || {
         memory_enabled: true,
         user_profile_enabled: true,
       },
+      skills: existing.skills,
       agent: {
-        max_turns: 60,
-        verbose: false,
-        reasoning_effort: 'medium',
+        ...existing.agent,
+        max_turns: existing.agent?.max_turns || 60,
+        verbose: existing.agent?.verbose || false,
+        reasoning_effort: existing.agent?.reasoning_effort || 'medium',
         personalities,
       },
     };
