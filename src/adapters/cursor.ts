@@ -76,12 +76,32 @@ export class CursorAdapter {
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
     try {
-      await this.read();
-      return { valid: true, errors: [] };
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const rulesDir = path.join(process.cwd(), '.cursor', 'rules');
+      let files: string[];
+      try {
+        files = await fs.readdir(rulesDir);
+      } catch {
+        return { valid: false, errors: ['No .cursor/rules directory found'] };
+      }
+      const mdcFiles = files.filter(f => f.endsWith('.mdc'));
+      if (mdcFiles.length === 0) {
+        return { valid: false, errors: ['No .mdc rule files found in .cursor/rules'] };
+      }
+      const errors: string[] = [];
+      for (const file of mdcFiles) {
+        const content = await fs.readFile(path.join(rulesDir, file), 'utf-8');
+        const rule = this.parseMdcFile(content);
+        if (!rule) {
+          errors.push(`${file}: invalid frontmatter (expected --- ... --- block)`);
+        }
+      }
+      return { valid: errors.length === 0, errors };
     } catch (error) {
-      return { 
-        valid: false, 
-        errors: [error instanceof Error ? error.message : 'Unknown error'] 
+      return {
+        valid: false,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
   }

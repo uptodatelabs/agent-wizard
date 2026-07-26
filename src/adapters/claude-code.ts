@@ -126,14 +126,46 @@ export class ClaudeCodeAdapter {
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
     try {
-      await this.read();
-      return { valid: true, errors: [] };
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const userPath = path.join(os.homedir(), '.claude', 'settings.json');
+      const projectPath = path.join(process.cwd(), '.claude', 'settings.json');
+      let config: Partial<ClaudeCodeSettings> = {};
+      try {
+        const content = await fs.readFile(userPath, 'utf-8');
+        config = JSON.parse(content);
+      } catch {
+        try {
+          const content = await fs.readFile(projectPath, 'utf-8');
+          config = JSON.parse(content);
+        } catch {
+          return { valid: false, errors: ['No Claude Code settings file found'] };
+        }
+      }
+      return ClaudeCodeAdapter.validateStructure(config);
     } catch (error) {
-      return { 
-        valid: false, 
-        errors: [error instanceof Error ? error.message : 'Unknown error'] 
+      return {
+        valid: false,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
+  }
+
+  static validateStructure(config: Partial<ClaudeCodeSettings>): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    if (!config || typeof config !== 'object') {
+      return { valid: false, errors: ['Config is not an object'] };
+    }
+    if (config.permissions) {
+      if (!Array.isArray(config.permissions.allow) || !Array.isArray(config.permissions.deny)) {
+        errors.push('"permissions.allow" and "permissions.deny" must be arrays');
+      }
+    }
+    if (config.hooks && typeof config.hooks !== 'object') {
+      errors.push('"hooks" must be an object');
+    }
+    return { valid: errors.length === 0, errors };
   }
 
   private toAgentConfig(settings: ClaudeCodeSettings): AgentConfig {

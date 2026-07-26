@@ -148,14 +148,28 @@ export class AiderAdapter {
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
     try {
-      await this.read();
-      return { valid: true, errors: [] };
+      const config = await this.readRaw();
+      return AiderAdapter.validateStructure(config);
     } catch (error) {
-      return { 
-        valid: false, 
-        errors: [error instanceof Error ? error.message : 'Unknown error'] 
+      return {
+        valid: false,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
+  }
+
+  static validateStructure(config: Partial<AiderConfig>): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    if (!config || typeof config !== 'object') {
+      return { valid: false, errors: ['Config is not an object'] };
+    }
+    if (Object.keys(config).length === 0) {
+      return { valid: false, errors: ['No Aider configuration found'] };
+    }
+    if (config['edit-format'] && typeof config['edit-format'] !== 'string') {
+      errors.push('"edit-format" must be a string');
+    }
+    return { valid: errors.length === 0, errors };
   }
 
   private toAgentConfig(aiderConfig: AiderConfig): AgentConfig {

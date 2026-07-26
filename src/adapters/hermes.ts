@@ -106,14 +106,37 @@ export class HermesAdapter {
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
     try {
-      await this.read();
-      return { valid: true, errors: [] };
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const yaml = await import('yaml');
+      const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
+      const content = await fs.readFile(configPath, 'utf-8');
+      const config = yaml.parse(content) as Partial<HermesConfig>;
+      return HermesAdapter.validateStructure(config);
     } catch (error) {
-      return { 
-        valid: false, 
-        errors: [error instanceof Error ? error.message : 'Unknown error'] 
+      return {
+        valid: false,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
+  }
+
+  static validateStructure(config: Partial<HermesConfig>): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    if (!config || typeof config !== 'object') {
+      return { valid: false, errors: ['Config is not an object'] };
+    }
+    if (config.model && typeof config.model !== 'object') {
+      errors.push('"model" must be an object');
+    }
+    if (config.agent && typeof config.agent !== 'object') {
+      errors.push('"agent" must be an object');
+    }
+    if (config.agent?.personalities && typeof config.agent.personalities !== 'object') {
+      errors.push('"agent.personalities" must be an object map');
+    }
+    return { valid: errors.length === 0, errors };
   }
 
   private toAgentConfig(hermesConfig: HermesConfig): AgentConfig {

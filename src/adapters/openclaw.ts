@@ -107,14 +107,39 @@ export class OpenClawAdapter {
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
     try {
-      await this.read();
-      return { valid: true, errors: [] };
+      const os = await import('os');
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+      const content = await fs.readFile(configPath, 'utf-8');
+      const config = JSON5.parse(content) as Partial<OpenClawConfig>;
+      return OpenClawAdapter.validateStructure(config);
     } catch (error) {
-      return { 
-        valid: false, 
-        errors: [error instanceof Error ? error.message : 'Unknown error'] 
+      return {
+        valid: false,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
+  }
+
+  static validateStructure(config: Partial<OpenClawConfig>): { valid: boolean; errors: string[] } {
+    const errors: string[] = [];
+    if (!config || typeof config !== 'object') {
+      return { valid: false, errors: ['Config is not an object'] };
+    }
+    if (!config.agents || typeof config.agents !== 'object') {
+      errors.push('Missing top-level "agents" object');
+    } else {
+      if (!config.agents.defaults || typeof config.agents.defaults !== 'object') {
+        errors.push('Missing "agents.defaults"');
+      } else if (!config.agents.defaults.workspace) {
+        errors.push('Missing "agents.defaults.workspace"');
+      }
+    }
+    if (config.tools && typeof config.tools !== 'object') {
+      errors.push('"tools" must be an object with allow/deny arrays');
+    }
+    return { valid: errors.length === 0, errors };
   }
 
   private toAgentConfig(openclawConfig: OpenClawConfig): AgentConfig {

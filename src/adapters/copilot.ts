@@ -136,12 +136,28 @@ export class CopilotAdapter {
 
   async validate(): Promise<{ valid: boolean; errors: string[] }> {
     try {
-      await this.read();
+      const path = await import('path');
+      const fs = await import('fs/promises');
+      const instructionsPath = path.join(process.cwd(), '.github', 'copilot-instructions.md');
+      const instructionsDir = path.join(process.cwd(), '.github', 'instructions');
+
+      const hasMain = await fs.access(instructionsPath).then(() => true).catch(() => false);
+      let pathCount = 0;
+      try {
+        const files = await fs.readdir(instructionsDir);
+        pathCount = files.filter(f => f.endsWith('.instructions.md')).length;
+      } catch {
+        // Directory doesn't exist
+      }
+
+      if (!hasMain && pathCount === 0) {
+        return { valid: false, errors: ['No Copilot instructions found (.github/copilot-instructions.md or .github/instructions/*.instructions.md)'] };
+      }
       return { valid: true, errors: [] };
     } catch (error) {
-      return { 
-        valid: false, 
-        errors: [error instanceof Error ? error.message : 'Unknown error'] 
+      return {
+        valid: false,
+        errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
   }
