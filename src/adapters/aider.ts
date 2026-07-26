@@ -223,7 +223,7 @@ export class AiderAdapter {
     const aiderConfig: AiderConfig = { ...existing };
     
     if (config.agents.length > 0) {
-      aiderConfig.model = config.agents[0].model;
+      aiderConfig.model = config.agents[0].model || existing.model;
       
       if (config.agents[0].instructions) {
         aiderConfig['commit-prompt'] = config.agents[0].instructions;
