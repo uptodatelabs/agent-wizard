@@ -72,7 +72,7 @@ export class ProfileManagerImpl {
   }
 
   async writeProfile(profile: Profile): Promise<void> {
-    const dir = this.getProfileDir(profile.name);
+    const dir = await this.getProfileDir(profile.name);
     await fs.mkdir(dir, { recursive: true });
     
     const profilePath = path.join(dir, 'profile.yaml');
@@ -81,16 +81,15 @@ export class ProfileManagerImpl {
   }
 
   async deleteProfile(name: string): Promise<void> {
-    const dir = this.getProfileDir(name);
+    const dir = await this.getProfileDir(name);
     await fs.rm(dir, { recursive: true, force: true });
   }
 
-  private getProfileDir(name: string): string {
-    // Write to local if it exists, otherwise global
+  private async getProfileDir(name: string): Promise<string> {
+    // Write to local if it already exists, otherwise fall back to global
+    const localProfilesDir = path.join(this.localDir, this.profilesDir);
     try {
-      const localProfilesDir = path.join(this.localDir, this.profilesDir);
-      const fs = require('fs');
-      fs.accessSync(localProfilesDir);
+      await fs.access(localProfilesDir);
       return path.join(this.localDir, this.profilesDir, name);
     } catch {
       return path.join(this.globalDir, this.profilesDir, name);
