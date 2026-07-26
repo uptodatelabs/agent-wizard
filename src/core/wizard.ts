@@ -90,7 +90,7 @@ export class ConfigWizard {
     for (const tool of tools) {
       console.log(chalk.bold(`\n⚙️  Configuring ${tool}...`));
       
-      const agent = await this.configureTool(tool, projectInfo);
+      const agent = await this.configureTool(tool);
       if (agent) {
         agents.push(agent);
       }
@@ -127,26 +127,26 @@ export class ConfigWizard {
     };
   }
 
-  private async configureTool(tool: string, projectInfo: ProjectInfo): Promise<Agent | null> {
+  private async configureTool(tool: string): Promise<Agent | null> {
     switch (tool) {
       case 'openclaw':
-        return this.configureOpenClaw(projectInfo);
+        return this.configureOpenClaw();
       case 'hermes':
-        return this.configureHermes(projectInfo);
+        return this.configureHermes();
       case 'claude-code':
-        return this.configureClaudeCode(projectInfo);
+        return this.configureClaudeCode();
       case 'cursor':
-        return this.configureCursor(projectInfo);
+        return this.configureCursor();
       case 'copilot':
-        return this.configureCopilot(projectInfo);
+        return this.configureCopilot();
       case 'aider':
-        return this.configureAider(projectInfo);
+        return this.configureAider();
       default:
         return null;
     }
   }
 
-  private async configureOpenClaw(projectInfo: ProjectInfo): Promise<Agent> {
+  private async configureOpenClaw(): Promise<Agent> {
     const answers = await inquirer.prompt([
       {
         type: 'input',
@@ -178,7 +178,7 @@ export class ConfigWizard {
     };
   }
 
-  private async configureHermes(projectInfo: ProjectInfo): Promise<Agent> {
+  private async configureHermes(): Promise<Agent> {
     const answers = await inquirer.prompt([
       {
         type: 'input',
@@ -217,7 +217,7 @@ export class ConfigWizard {
     };
   }
 
-  private async configureClaudeCode(projectInfo: ProjectInfo): Promise<Agent> {
+  private async configureClaudeCode(): Promise<Agent> {
     const answers = await inquirer.prompt([
       {
         type: 'input',
@@ -248,7 +248,7 @@ export class ConfigWizard {
     };
   }
 
-  private async configureCursor(projectInfo: ProjectInfo): Promise<Agent> {
+  private async configureCursor(): Promise<Agent> {
     const answers = await inquirer.prompt([
       {
         type: 'input',
@@ -274,7 +274,7 @@ export class ConfigWizard {
     };
   }
 
-  private async configureCopilot(projectInfo: ProjectInfo): Promise<Agent> {
+  private async configureCopilot(): Promise<Agent> {
     const answers = await inquirer.prompt([
       {
         type: 'input',
@@ -300,7 +300,7 @@ export class ConfigWizard {
     };
   }
 
-  private async configureAider(projectInfo: ProjectInfo): Promise<Agent> {
+  private async configureAider(): Promise<Agent> {
     const answers = await inquirer.prompt([
       {
         type: 'input',

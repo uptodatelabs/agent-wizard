@@ -1,4 +1,4 @@
-import { AgentConfig, Agent, Skill } from '../core/types';
+import { AgentConfig, Agent } from '../core/types';
 
 export interface ClaudeCodeSettings {
   $schema?: string;

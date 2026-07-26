@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Box, Text, useInput, useApp } from 'ink';
 import { StatusAdapter } from '../core/status-adapter';
-import { AgentStatus, DashboardData } from '../core/status';
+import { DashboardData } from '../core/status';
 import { ToolStatusCard } from './components/ToolStatusCard';
 import { AgentDetailPanel } from './components/AgentDetailPanel';
 

@@ -1,4 +1,4 @@
-import { AgentConfig, ProjectMetadata, Agent, QualityScore } from '../core/types';
+import { AgentConfig, Agent } from '../core/types';
 
 export interface OpenClawConfig {
   $schema?: string;

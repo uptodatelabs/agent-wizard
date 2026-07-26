@@ -35,7 +35,7 @@ program
     const wizard = new ConfigWizard();
     
     try {
-      const { projectInfo, selectedTools, config } = await wizard.run();
+      const { selectedTools, config } = await wizard.run();
       await wizard.writeConfig(config, selectedTools);
       
       console.log(chalk.bold.green('\n✅ Configuration complete!\n'));
@@ -102,7 +102,7 @@ program
     const wizard = new ConfigWizard();
     
     try {
-      const { projectInfo, selectedTools, config } = await wizard.run();
+      const { selectedTools, config } = await wizard.run();
       await wizard.writeConfig(config, selectedTools);
       
       console.log(chalk.bold.green('\n✅ Configuration updated!\n'));

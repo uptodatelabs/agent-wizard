@@ -1,6 +1,4 @@
-import * as fs from 'fs/promises';
 import * as path from 'path';
-import * as yaml from 'yaml';
 import { Profile, AgentProfile } from './profile';
 import { OpenClawAdapter, OpenClawConfig } from '../adapters/openclaw';
 import { HermesAdapter, HermesConfig } from '../adapters/hermes';
@@ -27,7 +25,7 @@ export class ProfileSync {
       try {
         await this.syncAgentToTool(agent, profile);
         success.push(agent.tool);
-      } catch (error) {
+      } catch (_error) {
         failed.push(agent.tool);
       }
     }
@@ -89,7 +87,7 @@ export class ProfileSync {
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
   }
 
-  private async syncToHermes(agent: AgentProfile, profile: Profile): Promise<void> {
+  private async syncToHermes(agent: AgentProfile, _profile: Profile): Promise<void> {
     const config: HermesConfig = {
       model: {
         default: agent.settings.model || 'anthropic/claude-opus-4.6',
@@ -141,7 +139,7 @@ export class ProfileSync {
     await fs.writeFile(configPath, JSON.stringify(config, null, 2));
   }
 
-  private async syncToCursor(agent: AgentProfile, profile: Profile): Promise<void> {
+  private async syncToCursor(agent: AgentProfile, _profile: Profile): Promise<void> {
     const rulesDir = path.join(process.cwd(), '.cursor', 'rules');
     const fs = await import('fs/promises');
     
@@ -162,7 +160,7 @@ ${agent.settings.instructions || 'AgentWizard generated rules'}
     await fs.writeFile(path.join(rulesDir, 'agent-wizard.mdc'), ruleContent);
   }
 
-  private async syncToCopilot(agent: AgentProfile, profile: Profile): Promise<void> {
+  private async syncToCopilot(agent: AgentProfile, _profile: Profile): Promise<void> {
     const instructionsDir = path.join(process.cwd(), '.github');
     const fs = await import('fs/promises');
     
@@ -177,7 +175,7 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
     await fs.writeFile(path.join(instructionsDir, 'copilot-instructions.md'), instructions);
   }
 
-  private async syncToAider(agent: AgentProfile, profile: Profile): Promise<void> {
+  private async syncToAider(agent: AgentProfile, _profile: Profile): Promise<void> {
     const config: AiderConfig = {
       model: agent.settings.model || 'sonnet',
       architect: agent.settings.architect || false,

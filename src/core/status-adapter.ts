@@ -1,7 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
-import { AgentStatus, AgentInfo, ToolDetails, DashboardData } from './status';
+import { AgentStatus, AgentInfo, DashboardData } from './status';
 import { OpenClawAdapter } from '../adapters/openclaw';
 import { HermesAdapter } from '../adapters/hermes';
 import { ClaudeCodeAdapter } from '../adapters/claude-code';
@@ -176,16 +176,16 @@ export class StatusAdapter {
     const scopes = ['user', 'project', 'local'] as const;
     const foundScopes: string[] = [];
     let model: string | undefined;
-    let permissions = { allow: 0, deny: 0 };
-    
+    let allowCount = 0;
+    let denyCount = 0;
     for (const scope of scopes) {
       try {
         const settings = await this.claudeCodeAdapter.readScope(scope);
         if (Object.keys(settings).length > 0) {
           foundScopes.push(scope);
           if (settings.model) model = settings.model;
-          if (settings.permissions?.allow) permissions.allow += settings.permissions.allow.length;
-          if (settings.permissions?.deny) permissions.deny += settings.permissions.deny.length;
+          if (settings.permissions?.allow) allowCount += settings.permissions.allow.length;
+          if (settings.permissions?.deny) denyCount += settings.permissions.deny.length;
         }
       } catch {
         // Continue
@@ -214,7 +214,7 @@ export class StatusAdapter {
       lastChecked: new Date(),
       details: {
         scopes: foundScopes,
-        permissions,
+        permissions: { allow: allowCount, deny: denyCount },
       },
     };
   }
@@ -223,7 +223,6 @@ export class StatusAdapter {
     const rulesDir = path.join(process.cwd(), '.cursor', 'rules');
     const agents: AgentInfo[] = [];
     let rulesCount = 0;
-    let alwaysApplyCount = 0;
     
     try {
       const files = await fs.readdir(rulesDir);
@@ -240,7 +239,6 @@ export class StatusAdapter {
           const alwaysApplyMatch = frontmatter.match(/alwaysApply:\s*(true|false)$/m);
           
           const isAlwaysApply = alwaysApplyMatch?.[1] === 'true';
-          if (isAlwaysApply) alwaysApplyCount++;
           
           agents.push({
             id: file,
