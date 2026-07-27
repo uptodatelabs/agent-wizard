@@ -1,5 +1,6 @@
 import * as path from 'path';
 import JSON5 from 'json5';
+import { backupFile } from './backup';
 import { Profile, AgentProfile } from './profile';
 import { OpenClawAdapter, OpenClawConfig } from '../adapters/openclaw';
 import { HermesAdapter, HermesConfig } from '../adapters/hermes';
@@ -107,6 +108,7 @@ export class ProfileSync {
     };
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await backupFile(configPath);
     await fs.writeFile(configPath, JSON5.stringify(merged, null, 2));
   }
 
@@ -149,6 +151,7 @@ export class ProfileSync {
     };
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await backupFile(configPath);
     await fs.writeFile(configPath, yaml.stringify(merged));
   }
 
@@ -176,6 +179,7 @@ export class ProfileSync {
     };
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await backupFile(configPath);
     await fs.writeFile(configPath, JSON.stringify(merged, null, 2));
   }
 
@@ -197,6 +201,7 @@ alwaysApply: false
 ${agent.settings.instructions || 'AgentWizard generated rules'}
 `;
 
+    await backupFile(path.join(rulesDir, 'agent-wizard.mdc'));
     await fs.writeFile(path.join(rulesDir, 'agent-wizard.mdc'), ruleContent);
   }
 
@@ -212,6 +217,7 @@ ${agent.settings.instructions || 'AgentWizard generated rules'}
 ${agent.settings.instructions || 'AgentWizard generated instructions'}
 `;
 
+    await backupFile(path.join(instructionsDir, 'copilot-instructions.md'));
     await fs.writeFile(path.join(instructionsDir, 'copilot-instructions.md'), instructions);
   }
 
@@ -233,6 +239,7 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
     if (merged.lint === undefined) merged.lint = true;
     if (merged['auto-lint'] === undefined) merged['auto-lint'] = true;
 
+    await backupFile(configPath);
     await fs.writeFile(configPath, yaml.stringify(merged));
   }
 

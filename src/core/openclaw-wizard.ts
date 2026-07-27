@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import JSON5 from 'json5';
+import { backupFile } from './backup';
 import inquirer from 'inquirer';
 import chalk from 'chalk';
 
@@ -105,6 +106,7 @@ export class OpenClawWizard implements AgentEditorPort {
 
   async saveConfig(config: OpenClawConfigShape): Promise<void> {
     await fs.mkdir(path.dirname(this.configPath), { recursive: true });
+    await backupFile(this.configPath);
     await fs.writeFile(this.configPath, JSON5.stringify(config, null, 2));
   }
 

@@ -2,6 +2,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
 import * as yaml from 'yaml';
+import { backupFile } from './backup';
 import { Profile, AgentProfile } from './profile';
 
 export class ProfileManagerImpl {
@@ -77,6 +78,7 @@ export class ProfileManagerImpl {
     
     const profilePath = path.join(dir, 'profile.yaml');
     const content = yaml.stringify(profile);
+    await backupFile(profilePath);
     await fs.writeFile(profilePath, content);
   }
 
