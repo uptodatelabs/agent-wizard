@@ -4,9 +4,10 @@ import { AgentStatus } from '../../core/status';
 
 interface AgentDetailPanelProps {
   status: AgentStatus;
+  selectedAgentIndex?: number;
 }
 
-export const AgentDetailPanel: React.FC<AgentDetailPanelProps> = ({ status }) => {
+export const AgentDetailPanel: React.FC<AgentDetailPanelProps> = ({ status, selectedAgentIndex = -1 }) => {
   const getStatusColor = (status: string): string => {
     switch (status) {
       case 'active':
@@ -60,8 +61,8 @@ export const AgentDetailPanel: React.FC<AgentDetailPanelProps> = ({ status }) =>
         </Box>
         <Box>
           <Text color="gray">Config Valid: </Text>
-          <Text color={status.configValid ? 'green' : 'red'}>
-            {status.configValid ? 'Yes ✓' : 'No ✗'}
+          <Text color={status.configValid === null ? 'gray' : status.configValid ? 'green' : 'red'}>
+            {status.configValid === null ? 'N/A' : status.configValid ? 'Yes ✓' : 'No ✗'}
           </Text>
         </Box>
       </Box>
@@ -75,6 +76,9 @@ export const AgentDetailPanel: React.FC<AgentDetailPanelProps> = ({ status }) =>
           <Box marginTop={1} flexDirection="column" gap={1}>
             {status.agents.map((agent, index) => (
               <Box key={agent.id} flexDirection="row" gap={1}>
+                <Text color={index === selectedAgentIndex ? 'green' : 'gray'}>
+                  {index === selectedAgentIndex ? '▶ ' : '  '}
+                </Text>
                 <Text color="gray">{index + 1}.</Text>
                 <Text color="cyan">{agent.name}</Text>
                 <Text color="gray">{agent.model || '-'}</Text>

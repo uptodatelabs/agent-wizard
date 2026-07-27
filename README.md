@@ -137,6 +137,47 @@ agent-wizard openclaw show researcher
 # => { "id": "researcher", "name": "Researcher", "model": "anthropic/claude-opus", "subagents": { "max": 8 } }
 ```
 
+### Common Agent Editor (all tools)
+
+`agent-wizard agents <subcommand> <tool> ...` is the **tool-agnostic** editor. Every
+supported tool implements the same `AgentEditorPort`, so the commands below work for
+any tool once its adapter implements the port. Currently `openclaw` is supported; other
+tools return a clear "does not support agent editing yet" message until their adapter
+implements the port (incremental rollout).
+
+| Command | Description |
+|---------|-------------|
+| `agent-wizard agents list <tool>` | List agents for a tool |
+| `agent-wizard agents show <tool> <id>` | Show one agent's full config (raw JSON) |
+| `agent-wizard agents add <tool> <id>` | Add an agent (`-n/--name`, `-m/--model`, `-w/--workspace`) |
+| `agent-wizard agents set <tool> <id> <key> <value>` | Set a key (dot-notation; JSON parsed when possible) |
+| `agent-wizard agents unset <tool> <id> <key>` | Delete a key from an agent |
+| `agent-wizard agents remove <tool> <id>` | Remove an agent |
+
+Example (tool-agnostic):
+
+```bash
+agent-wizard agents list openclaw
+agent-wizard agents set openclaw coder tools.profile '"full"'
+agent-wizard agents show openclaw coder
+```
+
+### Dashboard — interactive agent editing
+
+`agent-wizard dashboard` now supports a 3-level navigation for **any tool that
+implements the agent editor port**:
+
+1. **Tool grid** — `↑↓` to select a tool, `Enter` to open its agents
+2. **Agent list** — `↑↓` to select an agent, `Enter` to edit it
+3. **Agent editor** — shows the agent's full raw settings as a flat key list; you can
+   - `e` edit a key's value
+   - `a` add a new key (dot-notation, e.g. `tools.profile`)
+   - `d` delete a key
+   - `q`/`Enter` to go back one level
+
+All edits are written back non-destructively (existing keys and unrelated config
+preserved).
+
 ### Status & Monitoring
 
 | Command | Description |

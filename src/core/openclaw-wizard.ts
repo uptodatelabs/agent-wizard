@@ -35,7 +35,10 @@ export interface OpenClawConfigShape {
  * This is the dedicated path the user asked for: list / show / add / remove /
  * edit agents, with free-form custom key add & delete per agent.
  */
-export class OpenClawWizard {
+import { AgentEditorPort, AgentListItem, AgentSettings } from './agent-editor';
+
+export class OpenClawWizard implements AgentEditorPort {
+  readonly tool = 'openclaw';
   private configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
 
   setConfigPath(p: string): void {
@@ -107,7 +110,7 @@ export class OpenClawWizard {
 
   // ---- Programmatic operations (also used by the interactive menu) ----
 
-  addAgent(config: OpenClawConfigShape, id: string): OpenClawAgentEntry {
+  addAgentInConfig(config: OpenClawConfigShape, id: string): OpenClawAgentEntry {
     const agents = this.getAgents(config);
     if (agents.some((a) => a.id === id)) {
       throw new Error(`Agent '${id}' already exists`);
@@ -118,7 +121,7 @@ export class OpenClawWizard {
     return agent;
   }
 
-  removeAgent(config: OpenClawConfigShape, id: string): void {
+  removeAgentInConfig(config: OpenClawConfigShape, id: string): void {
     const agents = this.getAgents(config);
     const next = agents.filter((a) => a.id !== id);
     if (next.length === agents.length) {
@@ -143,16 +146,70 @@ export class OpenClawWizard {
   }
 
   /** Set a (nested, dot-notation) key on an agent. Value parsed as JSON when possible. */
-  setAgentKey(config: OpenClawConfigShape, id: string, key: string, value: string): void {
+  setAgentKeyInConfig(config: OpenClawConfigShape, id: string, key: string, value: string): void {
     const agent = this.requireRawAgent(config, id);
     const parsed = this.parseValue(value);
     this.setNested(agent, key, parsed);
   }
 
   /** Remove a (nested, dot-notation) key from an agent. */
-  unsetAgentKey(config: OpenClawConfigShape, id: string, key: string): void {
+  unsetAgentKeyInConfig(config: OpenClawConfigShape, id: string, key: string): void {
     const agent = this.requireRawAgent(config, id);
     this.unsetNested(agent, key);
+  }
+
+  // ---- AgentEditorPort implementation (load + persist) ----
+
+  async listAgents(): Promise<AgentListItem[]> {
+    const config = await this.loadConfig();
+    return this.getAgents(config).map((a) => ({
+      id: a.id,
+      name: a.name,
+      summary: [a.model && `model=${a.model}`, a.workspace && `workspace=${a.workspace}`]
+        .filter(Boolean)
+        .join(', '),
+    }));
+  }
+
+  async getAgentRaw(id: string): Promise<AgentSettings> {
+    const config = await this.loadConfig();
+    const agent = this.getAgent(config, id);
+    if (!agent) throw new Error(`Agent '${id}' not found`);
+    return { ...agent } as AgentSettings;
+  }
+
+  async setAgentKey(id: string, key: string, value: string): Promise<void> {
+    const config = await this.loadConfig();
+    this.setAgentKeyInConfig(config, id, key, value);
+    await this.saveConfig(config);
+  }
+
+  async unsetAgentKey(id: string, key: string): Promise<void> {
+    const config = await this.loadConfig();
+    this.unsetAgentKeyInConfig(config, id, key);
+    await this.saveConfig(config);
+  }
+
+  async addAgent(id: string, defaults?: AgentSettings): Promise<void> {
+    const config = await this.loadConfig();
+    const agent = this.addAgentInConfig(config, id);
+    if (defaults) {
+      for (const [k, v] of Object.entries(defaults)) {
+        this.setNested(agent, k, v);
+      }
+    }
+    await this.saveConfig(config);
+  }
+
+  async removeAgent(id: string): Promise<void> {
+    const config = await this.loadConfig();
+    this.removeAgentInConfig(config, id);
+    await this.saveConfig(config);
+  }
+
+  async save(): Promise<void> {
+    // All mutating methods already persist; this is a no-op for OpenClaw but
+    // part of the common port contract (some adapters batch changes).
   }
 
   private requireAgent(config: OpenClawConfigShape, id: string): OpenClawAgentEntry {
@@ -251,7 +308,7 @@ export class OpenClawWizard {
           { type: 'input', name: 'id', message: 'New agent id:', validate: (v: string) => (v.trim() ? true : 'id is required') },
         ]);
         try {
-          const agent = this.addAgent(config, id.trim());
+          const agent = this.addAgentInConfig(config, id.trim());
           const { name } = await inquirer.prompt([{ type: 'input', name: 'name', message: 'Display name:', default: id.trim() }]);
           const { model } = await inquirer.prompt([{ type: 'input', name: 'model', message: 'Model (optional):' }]);
           const { workspace } = await inquirer.prompt([{ type: 'input', name: 'workspace', message: 'Workspace path (optional):' }]);
@@ -271,7 +328,7 @@ export class OpenClawWizard {
           { type: 'confirm', name: 'confirm', message: `Remove agent '${id}'?`, default: false },
         ]);
         if (confirm) {
-          this.removeAgent(config, id);
+          this.removeAgentInConfig(config, id);
           console.log(chalk.green(`Removed '${id}'.`));
         }
         continue;
@@ -321,7 +378,7 @@ export class OpenClawWizard {
       if (action === 'custom-set') {
         const { key } = await inquirer.prompt([{ type: 'input', name: 'key', message: 'Key (dot-notation, e.g. tools.profile):', validate: (v: string) => (v.trim() ? true : 'key required') }]);
         const { value } = await inquirer.prompt([{ type: 'input', name: 'value', message: 'Value (JSON parsed when possible):' }]);
-        this.setAgentKey(config, id, key.trim(), value);
+        this.setAgentKeyInConfig(config, id, key.trim(), value);
         console.log(chalk.green(`Set ${key.trim()}.`));
         continue;
       }
@@ -332,7 +389,7 @@ export class OpenClawWizard {
           { type: 'list', name: 'key', message: 'Key to delete:', choices },
         ]);
         if (key && key !== '<none>') {
-          this.unsetAgentKey(config, id, key);
+          this.unsetAgentKeyInConfig(config, id, key);
           console.log(chalk.green(`Deleted '${key}'.`));
         }
         continue;
@@ -344,10 +401,10 @@ export class OpenClawWizard {
         { type: 'input', name: 'value', message: `New value for '${field}':`, default: currentVal === undefined ? '' : String(currentVal) },
       ]);
       if (value === '') {
-        this.unsetAgentKey(config, id, field);
+        this.unsetAgentKeyInConfig(config, id, field);
         console.log(chalk.gray(`Cleared '${field}'.`));
       } else {
-        this.setAgentKey(config, id, field, value);
+        this.setAgentKeyInConfig(config, id, field, value);
         console.log(chalk.green(`Set '${field}'.`));
       }
     }

@@ -5,6 +5,7 @@ import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import JSON5 from 'json5';
 import { OpenClawWizard } from '../core/openclaw-wizard';
+import { createAgentEditor } from '../core/agent-editor';
 
 const hoisted = vi.hoisted(() => ({ home: { value: '' } }));
 
@@ -254,8 +255,8 @@ describe('OpenClawWizard', () => {
     expect(agents.map((a) => a.id).sort()).toEqual(['coder', 'main']);
     expect(wiz.getAgent(cfg, 'coder')?.model).toBe('m2');
 
-    wiz.addAgent(cfg, 'newbie');
-    wiz.setAgentKey(cfg, 'newbie', 'tools.profile', '"full"');
+    wiz.addAgentInConfig(cfg, 'newbie');
+    wiz.setAgentKeyInConfig(cfg, 'newbie', 'tools.profile', '"full"');
     await wiz.saveConfig(cfg);
 
     const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
@@ -271,9 +272,9 @@ describe('OpenClawWizard', () => {
 
   it('set/unset custom keys (dot-notation) mutate the real agent object', async () => {
     const cfg = await wiz.loadConfig();
-    wiz.setAgentKey(cfg, 'coder', 'subagents.max', '8');
-    wiz.setAgentKey(cfg, 'coder', 'identity.theme', '"korean"');
-    wiz.unsetAgentKey(cfg, 'coder', 'workspace');
+    wiz.setAgentKeyInConfig(cfg, 'coder', 'subagents.max', '8');
+    wiz.setAgentKeyInConfig(cfg, 'coder', 'identity.theme', '"korean"');
+    wiz.unsetAgentKeyInConfig(cfg, 'coder', 'workspace');
     await wiz.saveConfig(cfg);
 
     const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
@@ -285,7 +286,7 @@ describe('OpenClawWizard', () => {
 
   it('removeAgent deletes by id and preserves remaining agents', async () => {
     const cfg = await wiz.loadConfig();
-    wiz.removeAgent(cfg, 'main');
+    wiz.removeAgentInConfig(cfg, 'main');
     await wiz.saveConfig(cfg);
     const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
     expect(reparsed.agents.list.map((a: any) => a.id)).toEqual(['coder']);
@@ -298,10 +299,54 @@ describe('OpenClawWizard', () => {
     );
     const cfg = await wiz.loadConfig();
     expect(wiz.getAgents(cfg).map((a) => a.id).sort()).toEqual(['a1', 'a2']);
-    wiz.setAgentKey(cfg, 'a1', 'model', 'mX');
+    wiz.setAgentKeyInConfig(cfg, 'a1', 'model', 'mX');
     await wiz.saveConfig(cfg);
     const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
     expect(reparsed.agents.entries.a1.model).toBe('mX');
     expect(reparsed.agents.list).toBeUndefined();
+  });
+});
+
+describe('AgentEditorPort (common interface)', () => {
+  let cfgPath = '';
+
+  beforeEach(async () => {
+    cfgPath = path.join(homeDir, '.openclaw', 'openclaw.json');
+    await writeText(
+      cfgPath,
+      `{
+  agents: { defaults: { workspace: 'w' }, list: [ { id: 'main', name: 'Main', model: 'm0' }, { id: 'coder', model: 'm2' } ] },
+  channels: { tg: { token: 'SECRET' } }
+}`
+    );
+  });
+
+  it('createAgentEditor returns an editor for openclaw and null for unsupported', () => {
+    const ed = createAgentEditor('openclaw');
+    expect(ed).not.toBeNull();
+    expect(ed?.tool).toBe('openclaw');
+    expect(createAgentEditor('hermes')).toBeNull();
+    expect(createAgentEditor('claude-code')).toBeNull();
+  });
+
+  it('port methods load + persist through the real file (no config arg needed)', async () => {
+    const ed = createAgentEditor('openclaw')!;
+    const list = await ed.listAgents();
+    expect(list.map((a) => a.id).sort()).toEqual(['coder', 'main']);
+
+    const raw = await ed.getAgentRaw('coder');
+    expect((raw as any).model).toBe('m2');
+
+    await ed.setAgentKey('coder', 'identity.emoji', '"🤖"');
+    await ed.unsetAgentKey('coder', 'model');
+    await ed.addAgent('helper', { name: 'Helper', model: 'm9' });
+
+    const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
+    const coder = reparsed.agents.list.find((a: any) => a.id === 'coder');
+    expect(coder.identity.emoji).toBe('🤖');
+    expect(coder.model).toBeUndefined();
+    expect(reparsed.agents.list.map((a: any) => a.id).sort()).toEqual(['coder', 'helper', 'main']);
+    // unrelated keys preserved
+    expect(reparsed.channels.tg.token).toBe('SECRET');
   });
 });

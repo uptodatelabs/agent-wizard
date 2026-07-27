@@ -15,6 +15,7 @@ import { CursorAdapter } from '../adapters/cursor';
 import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter } from '../adapters/aider';
 import { OpenClawWizard } from '../core/openclaw-wizard';
+import { createAgentEditor } from '../core/agent-editor';
 
 const program = new Command();
 const profileManager = new ProfileManagerImpl();
@@ -805,13 +806,12 @@ openclaw
   .option('-m, --model <model>', 'Model')
   .option('-w, --workspace <path>', 'Workspace path')
   .action(async (id: string, options: { name?: string; model?: string; workspace?: string }) => {
-    const config = await openclawWizard.loadConfig();
     try {
-      const agent = openclawWizard.addAgent(config, id);
-      agent.name = options.name || id;
-      if (options.model) agent.model = options.model;
-      if (options.workspace) agent.workspace = options.workspace;
-      await openclawWizard.saveConfig(config);
+      const defaults: Record<string, unknown> = {};
+      if (options.name) defaults.name = options.name;
+      if (options.model) defaults.model = options.model;
+      if (options.workspace) defaults.workspace = options.workspace;
+      await openclawWizard.addAgent(id, defaults);
       console.log(chalk.green(`✅ Added agent '${id}'.`));
     } catch (e) {
       console.error(chalk.red((e as Error).message));
@@ -823,10 +823,8 @@ openclaw
   .command('set <id> <key> <value>')
   .description('Set a key (dot-notation) on an OpenClaw agent; value parsed as JSON when possible')
   .action(async (id: string, key: string, value: string) => {
-    const config = await openclawWizard.loadConfig();
     try {
-      openclawWizard.setAgentKey(config, id, key, value);
-      await openclawWizard.saveConfig(config);
+      await openclawWizard.setAgentKey(id, key, value);
       console.log(chalk.green(`✅ Set '${key}' on '${id}'.`));
     } catch (e) {
       console.error(chalk.red((e as Error).message));
@@ -838,10 +836,8 @@ openclaw
   .command('unset <id> <key>')
   .description('Delete a key (dot-notation) from an OpenClaw agent')
   .action(async (id: string, key: string) => {
-    const config = await openclawWizard.loadConfig();
     try {
-      openclawWizard.unsetAgentKey(config, id, key);
-      await openclawWizard.saveConfig(config);
+      await openclawWizard.unsetAgentKey(id, key);
       console.log(chalk.green(`✅ Deleted '${key}' from '${id}'.`));
     } catch (e) {
       console.error(chalk.red((e as Error).message));
@@ -853,11 +849,134 @@ openclaw
   .command('remove <id>')
   .description('Remove an OpenClaw agent')
   .action(async (id: string) => {
-    const config = await openclawWizard.loadConfig();
     try {
-      openclawWizard.removeAgent(config, id);
-      await openclawWizard.saveConfig(config);
+      await openclawWizard.removeAgent(id);
       console.log(chalk.green(`✅ Removed agent '${id}'.`));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
+
+// Common agent editor command group (works for any supported tool via createAgentEditor)
+const agentsCmd = program
+  .command('agents')
+  .description('Edit agents for a supported tool (openclaw, ...) directly');
+
+agentsCmd
+  .command('list <tool>')
+  .description('List agents for a tool')
+  .action(async (tool: string) => {
+    const ed = createAgentEditor(tool);
+    if (!ed) {
+      console.error(chalk.red(`Tool '${tool}' does not support agent editing yet.`));
+      process.exit(1);
+    }
+    const agents = await ed.listAgents();
+    if (agents.length === 0) {
+      console.log(`No agents configured for '${tool}'.`);
+      return;
+    }
+    console.log(chalk.bold.cyan(`\n📋 ${tool} Agents`));
+    agents.forEach((a) => {
+      const meta = a.summary ? ` (${a.summary})` : '';
+      console.log(`  • ${chalk.green(a.id)}${meta}`);
+    });
+    console.log('');
+  });
+
+agentsCmd
+  .command('show <tool> <id>')
+  .description('Show one agent config (JSON)')
+  .action(async (tool: string, id: string) => {
+    const ed = createAgentEditor(tool);
+    if (!ed) {
+      console.error(chalk.red(`Tool '${tool}' does not support agent editing yet.`));
+      process.exit(1);
+    }
+    try {
+      const raw = await ed.getAgentRaw(id);
+      console.log(chalk.bold.cyan(`\n🔍 ${tool} / ${id}`));
+      console.log(JSON.stringify(raw, null, 2));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
+
+agentsCmd
+  .command('add <tool> <id>')
+  .description('Add an agent')
+  .option('-n, --name <name>', 'Display name')
+  .option('-m, --model <model>', 'Model')
+  .option('-w, --workspace <path>', 'Workspace path')
+  .action(async (tool: string, id: string, options: { name?: string; model?: string; workspace?: string }) => {
+    const ed = createAgentEditor(tool);
+    if (!ed) {
+      console.error(chalk.red(`Tool '${tool}' does not support agent editing yet.`));
+      process.exit(1);
+    }
+    try {
+      const defaults: Record<string, unknown> = {};
+      if (options.name) defaults.name = options.name;
+      if (options.model) defaults.model = options.model;
+      if (options.workspace) defaults.workspace = options.workspace;
+      await ed.addAgent(id, defaults);
+      console.log(chalk.green(`✅ Added agent '${id}' to '${tool}'.`));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
+
+agentsCmd
+  .command('set <tool> <id> <key> <value>')
+  .description('Set a key (dot-notation) on an agent; JSON parsed when possible')
+  .action(async (tool: string, id: string, key: string, value: string) => {
+    const ed = createAgentEditor(tool);
+    if (!ed) {
+      console.error(chalk.red(`Tool '${tool}' does not support agent editing yet.`));
+      process.exit(1);
+    }
+    try {
+      await ed.setAgentKey(id, key, value);
+      console.log(chalk.green(`✅ Set '${key}' on '${id}' (${tool}).`));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
+
+agentsCmd
+  .command('unset <tool> <id> <key>')
+  .description('Delete a key (dot-notation) from an agent')
+  .action(async (tool: string, id: string, key: string) => {
+    const ed = createAgentEditor(tool);
+    if (!ed) {
+      console.error(chalk.red(`Tool '${tool}' does not support agent editing yet.`));
+      process.exit(1);
+    }
+    try {
+      await ed.unsetAgentKey(id, key);
+      console.log(chalk.green(`✅ Deleted '${key}' from '${id}' (${tool}).`));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
+
+agentsCmd
+  .command('remove <tool> <id>')
+  .description('Remove an agent')
+  .action(async (tool: string, id: string) => {
+    const ed = createAgentEditor(tool);
+    if (!ed) {
+      console.error(chalk.red(`Tool '${tool}' does not support agent editing yet.`));
+      process.exit(1);
+    }
+    try {
+      await ed.removeAgent(id);
+      console.log(chalk.green(`✅ Removed agent '${id}' from '${tool}'.`));
     } catch (e) {
       console.error(chalk.red((e as Error).message));
       process.exit(1);
