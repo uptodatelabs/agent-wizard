@@ -140,10 +140,22 @@ agent-wizard openclaw show researcher
 ### Common Agent Editor (all tools)
 
 `agent-wizard agents <subcommand> <tool> ...` is the **tool-agnostic** editor. Every
-supported tool implements the same `AgentEditorPort`, so the commands below work for
-any tool once its adapter implements the port. Currently `openclaw` is supported; other
-tools return a clear "does not support agent editing yet" message until their adapter
-implements the port (incremental rollout).
+supported tool implements the same `AgentEditorPort`, so the same commands work for
+all of them.
+
+**Supported tools and their agent model:**
+
+| Tool | Agent unit | Add/Remove? |
+|------|-----------|-------------|
+| `openclaw` | each entry in `agents.list` (rich JSON object) | ✅ |
+| `hermes` | each `agent.personalities` entry (name → instructions) | ✅ |
+| `claude-code` | the single `settings.json` (user scope) | key edit only |
+| `cursor` | each `.cursor/rules/*.mdc` file | ✅ |
+| `copilot` | `copilot-instructions.md` + `.github/instructions/*.instructions.md` | ✅ |
+| `aider` | the single `.aider.conf.yml` | key edit only |
+
+Every write creates a timestamped backup (`<file>.bak-YYYYMMDD-HHMMSS`) before
+overwriting, and preserves unrelated keys (non-destructive).
 
 | Command | Description |
 |---------|-------------|
@@ -154,11 +166,13 @@ implements the port (incremental rollout).
 | `agent-wizard agents unset <tool> <id> <key>` | Delete a key from an agent |
 | `agent-wizard agents remove <tool> <id>` | Remove an agent |
 
-Example (tool-agnostic):
+Examples (any tool):
 
 ```bash
-agent-wizard agents list openclaw
-agent-wizard agents set openclaw coder tools.profile '"full"'
+agent-wizard agents list hermes
+agent-wizard agents set hermes coder instructions '"You are a senior backend engineer."'
+agent-wizard agents set claude-code user model '"claude-sonnet"'
+agent-wizard agents add cursor my-rule -n "My Rule"
 agent-wizard agents show openclaw coder
 ```
 

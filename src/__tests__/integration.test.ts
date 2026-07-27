@@ -321,12 +321,13 @@ describe('AgentEditorPort (common interface)', () => {
     );
   });
 
-  it('createAgentEditor returns an editor for openclaw and null for unsupported', () => {
-    const ed = createAgentEditor('openclaw');
-    expect(ed).not.toBeNull();
-    expect(ed?.tool).toBe('openclaw');
-    expect(createAgentEditor('hermes')).toBeNull();
-    expect(createAgentEditor('claude-code')).toBeNull();
+  it('createAgentEditor returns an editor for every supported tool', () => {
+    for (const tool of ['openclaw', 'hermes', 'claude-code', 'cursor', 'copilot', 'aider']) {
+      const ed = createAgentEditor(tool);
+      expect(ed).not.toBeNull();
+      expect(ed?.tool).toBe(tool);
+    }
+    expect(createAgentEditor('unknown-tool')).toBeNull();
   });
 
   it('port methods load + persist through the real file (no config arg needed)', async () => {
