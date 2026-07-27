@@ -9,6 +9,7 @@ import { ClaudeCodeAdapter } from '../adapters/claude-code';
 import { CursorAdapter } from '../adapters/cursor';
 import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter } from '../adapters/aider';
+import { HERMES_BUILTIN_PERSONALITIES } from './editors/hermes-editor';
 
 export class StatusAdapter {
   private openclawAdapter = new OpenClawAdapter();
@@ -193,6 +194,7 @@ export class StatusAdapter {
         role: 'coder',
         enabled: true,
         status: 'active',
+        builtin: HERMES_BUILTIN_PERSONALITIES.has(name),
         config: { instructions },
       });
     }

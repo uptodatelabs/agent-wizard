@@ -19,13 +19,14 @@ function flatten(obj: AgentSettings, prefix = ''): { key: string; value: string 
 interface Props {
   editor: AgentEditorPort;
   agentId: string;
+  builtin?: boolean;
   onBack: () => void;
   onChanged: () => void;
 }
 
 type Mode = 'view' | 'edit-key' | 'edit-value' | 'add-key' | 'add-value' | 'confirm-delete';
 
-export const AgentEditorPanel: React.FC<Props> = ({ editor, agentId, onBack, onChanged }) => {
+export const AgentEditorPanel: React.FC<Props> = ({ editor, agentId, builtin, onBack, onChanged }) => {
   const [raw, setRaw] = useState<AgentSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<Mode>('view');
@@ -179,6 +180,9 @@ export const AgentEditorPanel: React.FC<Props> = ({ editor, agentId, onBack, onC
       <Box marginBottom={1}>
         <Text bold color="cyan">
           🤖 {agentId} — Settings
+        </Text>
+        <Text color={builtin ? 'gray' : 'magenta'}>
+          {builtin ? '  [기본]' : '  [사용자]'}
         </Text>
       </Box>
 

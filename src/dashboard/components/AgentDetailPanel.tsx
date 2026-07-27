@@ -81,6 +81,9 @@ export const AgentDetailPanel: React.FC<AgentDetailPanelProps> = ({ status, sele
                 </Text>
                 <Text color="gray">{index + 1}.</Text>
                 <Text color="cyan">{agent.name}</Text>
+                <Text color={agent.builtin ? 'gray' : 'magenta'}>
+                  {agent.builtin ? '[기본]' : '[사용자]'}
+                </Text>
                 <Text color="gray">{agent.model || '-'}</Text>
                 <Text color={agent.status === 'active' ? 'green' : 'gray'}>
                   {agent.status === 'active' ? '● Active' : '○ Inactive'}

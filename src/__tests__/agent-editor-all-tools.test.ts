@@ -36,6 +36,8 @@ describe('AgentEditorPort — all supported tools', () => {
     const ed = createAgentEditor('hermes')!;
     const list = await ed.listAgents();
     expect(list.map((a) => a.id).sort()).toEqual(['coder', 'reviewer']);
+    // builtin classification: coder/reviewer are not in the Hermes built-in set
+    expect(list.every((a) => a.builtin === false)).toBe(true);
 
     const raw = await ed.getAgentRaw('coder');
     expect((raw as any).instructions).toBe('You are a coder.');

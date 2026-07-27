@@ -141,6 +141,7 @@ export const Dashboard: React.FC = () => {
         <AgentEditorPanel
           editor={editor}
           agentId={editorAgentId}
+          builtin={selectedTool.agents.find((a) => a.id === editorAgentId)?.builtin}
           onBack={() => setView('agents')}
           onChanged={() => fetchData()}
         />

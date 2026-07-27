@@ -19,6 +19,9 @@ export interface AgentInfo {
   enabled: boolean;
   status: 'active' | 'inactive';
   config?: Record<string, any>;
+  /** true when this is a built-in/default agent for the tool (e.g. a Hermes
+   *  built-in personality). Omitted for tools that don't distinguish. */
+  builtin?: boolean;
 }
 
 export interface ToolDetails {

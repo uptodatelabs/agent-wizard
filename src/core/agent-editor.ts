@@ -15,8 +15,11 @@ export type AgentSettings = Record<string, unknown>;
 export interface AgentListItem {
   id: string;
   name?: string;
-  /** Short human-readable summary, e.g. "model=gpt-4, workspace=~/x" */
   summary?: string;
+  /** true when this agent is a built-in/default entry for the tool (e.g. a
+   *  Hermes built-in personality). Optional — tools that don't distinguish
+   *  built-in vs custom agents simply omit it. */
+  builtin?: boolean;
 }
 
 export interface AgentEditorPort {

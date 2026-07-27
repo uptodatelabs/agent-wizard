@@ -880,7 +880,8 @@ agentsCmd
     console.log(chalk.bold.cyan(`\n📋 ${tool} Agents`));
     agents.forEach((a) => {
       const meta = a.summary ? ` (${a.summary})` : '';
-      console.log(`  • ${chalk.green(a.id)}${meta}`);
+      const kind = a.builtin === undefined ? '' : a.builtin ? ' [기본]' : ' [사용자]';
+      console.log(`  • ${chalk.green(a.id)}${chalk.gray(kind)}${meta}`);
     });
     console.log('');
   });

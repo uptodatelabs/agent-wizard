@@ -4,6 +4,27 @@ import * as os from 'os';
 import * as yaml from 'yaml';
 import { AgentEditorPort, AgentListItem, AgentSettings, getByPath, setByPath, deleteByPath, parseValue } from '../agent-editor';
 import { backupFile } from '../backup';
+
+/**
+ * Hermes personalities that ship as built-ins (from Hermes' default
+ * `cli-config.yaml.example`). Any personality present in the user's config but
+ * NOT in this set is treated as user-defined.
+ */
+export const HERMES_BUILTIN_PERSONALITIES = new Set<string>([
+  'helpful',
+  'concise',
+  'technical',
+  'creative',
+  'teacher',
+  'kawaii',
+  'catgirl',
+  'pirate',
+  'shakespeare',
+  'surfer',
+  'noir',
+  'uwu',
+  'philosopher',
+]);
 import { HermesConfig } from '../../adapters/hermes';
 
 /**
@@ -40,6 +61,7 @@ export class HermesAgentEditor implements AgentEditorPort {
       id,
       name: id,
       summary: `instructions ${String(personalities[id]).length} chars`,
+      builtin: HERMES_BUILTIN_PERSONALITIES.has(id),
     }));
   }
 
