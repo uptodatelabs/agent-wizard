@@ -114,6 +114,29 @@ Opens an interactive dashboard to monitor all your AI assistants.
 | `agent-wizard agent config <profile> <agentId> <key> <value>` | Update agent setting (dot-notation keys supported, e.g. `terminal.timeout`) |
 | `agent-wizard agent list <profile>` | List agents in profile |
 
+### OpenClaw Direct Agent Management
+
+Manage agents in your real OpenClaw config (`~/.openclaw/openclaw.json`) directly — without going through a profile. Supports the `agents.list` (array) and `agents.entries` (record) shapes, and preserves every other key (`channels`, `models`, `mcp`, ...) on write.
+
+| Command | Description |
+|---------|-------------|
+| `agent-wizard openclaw configure` | **Interactive wizard**: lists agents, then add / remove / edit each one (known fields + any custom key via dot-notation). Requires a TTY. |
+| `agent-wizard openclaw list` | List configured agents |
+| `agent-wizard openclaw show <id>` | Show one agent's full config (JSON) |
+| `agent-wizard openclaw add <id>` | Add an agent (`-n/--name`, `-m/--model`, `-w/--workspace`) |
+| `agent-wizard openclaw set <id> <key> <value>` | Set a key (dot-notation, e.g. `tools.profile` or `identity.emoji`); value is parsed as JSON when possible |
+| `agent-wizard openclaw unset <id> <key>` | Delete a key from an agent |
+| `agent-wizard openclaw remove <id>` | Remove an agent |
+
+Example — add a custom field and read it back:
+
+```bash
+agent-wizard openclaw add researcher -n "Researcher" -m "anthropic/claude-opus"
+agent-wizard openclaw set researcher subagents.max 8
+agent-wizard openclaw show researcher
+# => { "id": "researcher", "name": "Researcher", "model": "anthropic/claude-opus", "subagents": { "max": 8 } }
+```
+
 ### Status & Monitoring
 
 | Command | Description |

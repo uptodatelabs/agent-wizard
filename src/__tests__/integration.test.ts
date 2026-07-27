@@ -4,6 +4,7 @@ import * as path from 'path';
 import { mkdtemp, rm } from 'fs/promises';
 import { tmpdir } from 'os';
 import JSON5 from 'json5';
+import { OpenClawWizard } from '../core/openclaw-wizard';
 
 const hoisted = vi.hoisted(() => ({ home: { value: '' } }));
 
@@ -221,5 +222,86 @@ describe('AgentWizard facade', () => {
     const aw = new AgentWizard();
     await aw.detect();
     expect(await aw.validate()).toBe(false);
+  });
+});
+
+describe('OpenClawWizard', () => {
+  const wiz = new OpenClawWizard();
+  let cfgPath = '';
+
+  beforeEach(async () => {
+    cfgPath = path.join(homeDir, '.openclaw', 'openclaw.json');
+    wiz.setConfigPath(cfgPath);
+    await writeText(
+      cfgPath,
+      `{
+  agents: {
+    defaults: { workspace: '~/.openclaw/ws', model: { primary: 'm0' } },
+    list: [
+      { id: 'main', tools: { profile: 'full' } },
+      { id: 'coder', name: 'Coder', identity: { name: '코더', emoji: '💰' }, model: 'm2', workspace: '~/.oc/coder' }
+    ]
+  },
+  channels: { tg: { enabled: true, token: 'SECRET' } },
+  models: { providers: { x: {} } }
+}`
+    );
+  });
+
+  it('reads agents from agents.list and preserves list shape on write', async () => {
+    const cfg = await wiz.loadConfig();
+    const agents = wiz.getAgents(cfg);
+    expect(agents.map((a) => a.id).sort()).toEqual(['coder', 'main']);
+    expect(wiz.getAgent(cfg, 'coder')?.model).toBe('m2');
+
+    wiz.addAgent(cfg, 'newbie');
+    wiz.setAgentKey(cfg, 'newbie', 'tools.profile', '"full"');
+    await wiz.saveConfig(cfg);
+
+    const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
+    expect(Array.isArray(reparsed.agents.list)).toBe(true);
+    expect(reparsed.agents.list.map((a: any) => a.id).sort()).toEqual(['coder', 'main', 'newbie']);
+    // custom key + nested values written
+    const nb = reparsed.agents.list.find((a: any) => a.id === 'newbie');
+    expect(nb.tools.profile).toBe('full');
+    // unrelated top-level keys preserved
+    expect(reparsed.channels.tg.token).toBe('SECRET');
+    expect(reparsed.models.providers.x).toBeTruthy();
+  });
+
+  it('set/unset custom keys (dot-notation) mutate the real agent object', async () => {
+    const cfg = await wiz.loadConfig();
+    wiz.setAgentKey(cfg, 'coder', 'subagents.max', '8');
+    wiz.setAgentKey(cfg, 'coder', 'identity.theme', '"korean"');
+    wiz.unsetAgentKey(cfg, 'coder', 'workspace');
+    await wiz.saveConfig(cfg);
+
+    const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
+    const coder = reparsed.agents.list.find((a: any) => a.id === 'coder');
+    expect(coder.subagents.max).toBe(8);
+    expect(coder.identity.theme).toBe('korean');
+    expect(coder.workspace).toBeUndefined();
+  });
+
+  it('removeAgent deletes by id and preserves remaining agents', async () => {
+    const cfg = await wiz.loadConfig();
+    wiz.removeAgent(cfg, 'main');
+    await wiz.saveConfig(cfg);
+    const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
+    expect(reparsed.agents.list.map((a: any) => a.id)).toEqual(['coder']);
+  });
+
+  it('supports agents.entries (record) shape too', async () => {
+    await writeText(
+      cfgPath,
+      `{ agents: { defaults: { workspace: 'w' }, entries: { a1: { name: 'A1' }, a2: { name: 'A2' } } }, channels: {} }`
+    );
+    const cfg = await wiz.loadConfig();
+    expect(wiz.getAgents(cfg).map((a) => a.id).sort()).toEqual(['a1', 'a2']);
+    wiz.setAgentKey(cfg, 'a1', 'model', 'mX');
+    await wiz.saveConfig(cfg);
+    const reparsed = JSON5.parse(await fs.readFile(cfgPath, 'utf-8'));
+    expect(reparsed.agents.entries.a1.model).toBe('mX');
+    expect(reparsed.agents.list).toBeUndefined();
   });
 });

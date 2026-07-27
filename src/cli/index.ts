@@ -14,11 +14,13 @@ import { ClaudeCodeAdapter } from '../adapters/claude-code';
 import { CursorAdapter } from '../adapters/cursor';
 import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter } from '../adapters/aider';
+import { OpenClawWizard } from '../core/openclaw-wizard';
 
 const program = new Command();
 const profileManager = new ProfileManagerImpl();
 const profileSync = new ProfileSync();
 const statusAdapter = new StatusAdapter();
+const openclawWizard = new OpenClawWizard();
 
 program
   .name('agent-wizard')
@@ -738,6 +740,129 @@ function getStatusColor(status: string): string {
       return chalk.gray('Unknown');
   }
 }
+
+// OpenClaw agent management command group
+const openclaw = program
+  .command('openclaw')
+  .description('Manage OpenClaw agent configuration directly');
+
+openclaw
+  .command('configure')
+  .description('Interactive wizard to list/edit/add/remove OpenClaw agents')
+  .action(async () => {
+    if (!process.stdin.isTTY) {
+      console.error(chalk.red('\n❌ Error:') + ' `openclaw configure` is an interactive wizard and requires a TTY.');
+      console.error('Use the non-interactive subcommands instead:');
+      console.error('  agent-wizard openclaw list');
+      console.error('  agent-wizard openclaw show <id>');
+      console.error('  agent-wizard openclaw add <id>');
+      console.error('  agent-wizard openclaw set <id> <key> <value>');
+      console.error('  agent-wizard openclaw unset <id> <key>');
+      console.error('  agent-wizard openclaw remove <id>\n');
+      process.exit(1);
+    }
+    await openclawWizard.configure();
+  });
+
+openclaw
+  .command('list')
+  .description('List configured OpenClaw agents')
+  .action(async () => {
+    const config = await openclawWizard.loadConfig();
+    const agents = openclawWizard.getAgents(config);
+    if (agents.length === 0) {
+      console.log('No agents configured in OpenClaw.');
+      return;
+    }
+    console.log(chalk.bold.cyan('\n📋 OpenClaw Agents'));
+    agents.forEach((a) => {
+      const meta = [a.name && `name=${a.name}`, a.model && `model=${a.model}`, a.workspace && `workspace=${a.workspace}`]
+        .filter(Boolean)
+        .join(', ');
+      console.log(`  • ${chalk.green(a.id)}${meta ? ` (${meta})` : ''}`);
+    });
+    console.log('');
+  });
+
+openclaw
+  .command('show <id>')
+  .description('Show a single OpenClaw agent configuration')
+  .action(async (id: string) => {
+    const config = await openclawWizard.loadConfig();
+    const agent = openclawWizard.getAgent(config, id);
+    if (!agent) {
+      console.error(chalk.red(`Agent '${id}' not found.`));
+      process.exit(1);
+    }
+    console.log(chalk.bold.cyan(`\n🔍 Agent: ${id}`));
+    console.log(JSON.stringify(agent, null, 2));
+  });
+
+openclaw
+  .command('add <id>')
+  .description('Add a new OpenClaw agent')
+  .option('-n, --name <name>', 'Display name')
+  .option('-m, --model <model>', 'Model')
+  .option('-w, --workspace <path>', 'Workspace path')
+  .action(async (id: string, options: { name?: string; model?: string; workspace?: string }) => {
+    const config = await openclawWizard.loadConfig();
+    try {
+      const agent = openclawWizard.addAgent(config, id);
+      agent.name = options.name || id;
+      if (options.model) agent.model = options.model;
+      if (options.workspace) agent.workspace = options.workspace;
+      await openclawWizard.saveConfig(config);
+      console.log(chalk.green(`✅ Added agent '${id}'.`));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
+
+openclaw
+  .command('set <id> <key> <value>')
+  .description('Set a key (dot-notation) on an OpenClaw agent; value parsed as JSON when possible')
+  .action(async (id: string, key: string, value: string) => {
+    const config = await openclawWizard.loadConfig();
+    try {
+      openclawWizard.setAgentKey(config, id, key, value);
+      await openclawWizard.saveConfig(config);
+      console.log(chalk.green(`✅ Set '${key}' on '${id}'.`));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
+
+openclaw
+  .command('unset <id> <key>')
+  .description('Delete a key (dot-notation) from an OpenClaw agent')
+  .action(async (id: string, key: string) => {
+    const config = await openclawWizard.loadConfig();
+    try {
+      openclawWizard.unsetAgentKey(config, id, key);
+      await openclawWizard.saveConfig(config);
+      console.log(chalk.green(`✅ Deleted '${key}' from '${id}'.`));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
+
+openclaw
+  .command('remove <id>')
+  .description('Remove an OpenClaw agent')
+  .action(async (id: string) => {
+    const config = await openclawWizard.loadConfig();
+    try {
+      openclawWizard.removeAgent(config, id);
+      await openclawWizard.saveConfig(config);
+      console.log(chalk.green(`✅ Removed agent '${id}'.`));
+    } catch (e) {
+      console.error(chalk.red((e as Error).message));
+      process.exit(1);
+    }
+  });
 
 // Dashboard command
 program
