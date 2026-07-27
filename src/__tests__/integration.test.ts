@@ -53,26 +53,34 @@ afterEach(async () => {
 });
 
 describe('OpenClawAdapter', () => {
-  it('reads JSON5 with comments without error and round-trips', async () => {
+  it('reads agents from agents.list (array shape) used by real OpenClaw configs', async () => {
     const adapter = new OpenClawAdapter();
     const configPath = path.join(homeDir, '.openclaw', 'openclaw.json');
     await writeText(configPath, `{
-  // keep this comment
-  agents: { defaults: { workspace: '~/.openclaw/workspace' } },
-  channels: { discord: { enabled: true } },
+  agents: {
+    defaults: { workspace: '~/.openclaw/ws', model: { primary: 'm1' } },
+    list: [
+      { id: 'main', tools: { profile: 'full' } },
+      { id: 'coder', name: 'Coder', identity: { name: '코더', emoji: '💰' }, model: 'm2', workspace: '~/.openclaw/coder' }
+    ]
+  },
+  channels: { tg: { enabled: true, token: 'SECRET' } }
 }`);
 
-    // read() must successfully parse JSON5 (including the comment)
     const cfg = await adapter.read();
-    expect(Array.isArray(cfg.agents)).toBe(true);
+    expect(cfg.agents.length).toBe(2);
+    expect(cfg.agents.map((a) => a.id).sort()).toEqual(['coder', 'main']);
+    expect(cfg.agents.find((a) => a.id === 'coder')?.model).toBe('m2');
 
-    // write() produces valid JSON5 that re-parses
-    await adapter.write(makeAgentConfig());
-    const written = await fs.readFile(configPath, 'utf-8');
-    const reparsed = JSON5.parse(written);
-    expect(reparsed).toBeTruthy();
-    // existing channels preserved via merge
-    expect(written).toContain('discord');
+    // write() must preserve the existing `list` shape (not convert to `entries`)
+    await adapter.write(makeAgentConfig({ agents: [{ id: 'main', name: 'Main', role: 'coder', model: 'm1', instructions: '', tools: [], guardrails: [] }] }));
+    const raw = await fs.readFile(configPath, 'utf-8');
+    const reparsed = JSON5.parse(raw);
+    expect(Array.isArray(reparsed.agents.list)).toBe(true);
+    expect(reparsed.agents.list.map((a: any) => a.id).sort()).toEqual(['coder', 'main']);
+    expect(reparsed.agents.entries).toBeUndefined();
+    // existing channels + token preserved
+    expect(reparsed.channels.tg.token).toBe('SECRET');
   });
 
   it('merge preserves existing channels/models/mcp on write', async () => {

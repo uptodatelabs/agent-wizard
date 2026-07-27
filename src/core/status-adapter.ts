@@ -110,6 +110,22 @@ export class StatusAdapter {
       });
     }
 
+    // Also support `agents.list` (array) shape used by real OpenClaw configs
+    if (Array.isArray(config.agents?.list)) {
+      for (const item of config.agents.list as any[]) {
+        if (!item?.id) continue;
+        agents.push({
+          id: item.id,
+          name: item.name || item.identity?.name || item.id,
+          model: item.model || config.agents?.defaults?.model?.primary,
+          role: 'coder',
+          enabled: true,
+          status: 'active',
+          config: item,
+        });
+      }
+    }
+
     return {
       tool: 'openclaw',
       toolName: 'OpenClaw',

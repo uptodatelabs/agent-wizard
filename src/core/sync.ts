@@ -63,25 +63,40 @@ export class ProfileSync {
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
     const existing = await this.readJson5<Partial<OpenClawConfig>>(configPath);
 
+    // Preserve the existing agents shape (entries Record OR list array)
+    const useList = Array.isArray(existing.agents?.list);
     const entries = { ...(existing.agents?.entries || {}) };
-    entries[agent.id] = {
-      ...entries[agent.id],
-      identity: { ...entries[agent.id]?.identity, name: agent.name },
+    const list: any[] = useList
+      ? existing.agents!.list!.map((item: any) => ({ ...item }))
+      : [];
+
+    if (useList) {
+      const idx = list.findIndex((l: any) => l.id === agent.id);
+      const def = { ...(idx >= 0 ? list[idx] : {}), id: agent.id, name: agent.name,
+        identity: { ...(idx >= 0 ? list[idx]?.identity : {}), name: agent.name } };
+      if (idx >= 0) list[idx] = def; else list.push(def);
+    } else {
+      entries[agent.id] = {
+        ...entries[agent.id],
+        identity: { ...entries[agent.id]?.identity, name: agent.name },
+      };
+    }
+
+    const agentsShape: any = {
+      defaults: {
+        ...existing.agents?.defaults,
+        workspace: existing.agents?.defaults?.workspace || agent.settings.workspace || '~/.openclaw/workspace',
+        model: {
+          primary: agent.settings.model || existing.agents?.defaults?.model?.primary || 'anthropic/claude-sonnet-4-6',
+          ...existing.agents?.defaults?.model,
+        },
+      },
     };
+    if (useList) agentsShape.list = list; else agentsShape.entries = entries;
 
     const merged: OpenClawConfig = {
       ...existing,
-      agents: {
-        defaults: {
-          ...existing.agents?.defaults,
-          workspace: existing.agents?.defaults?.workspace || agent.settings.workspace || '~/.openclaw/workspace',
-          model: {
-            primary: agent.settings.model || existing.agents?.defaults?.model?.primary || 'anthropic/claude-sonnet-4-6',
-            ...existing.agents?.defaults?.model,
-          },
-        },
-        entries,
-      },
+      agents: agentsShape,
       channels: existing.channels,
       models: existing.models,
       tools: {
@@ -278,18 +293,21 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
         const agentConfig = await adapter.read();
         
         if (agentConfig.agents.length > 0) {
-          const agent = agentConfig.agents[0];
-          profile.agents.push({
-            id: tool,
-            name: agent.name,
-            tool,
-            enabled: true,
-            settings: {
-              model: agent.model,
-              instructions: agent.instructions,
-            },
-            custom: {},
-          });
+          for (const agent of agentConfig.agents) {
+            // Avoid id collision when a single tool exposes multiple agents
+            const agentId = profile.agents.some((a) => a.id === agent.id) ? `${tool}-${agent.id}` : agent.id;
+            profile.agents.push({
+              id: agentId,
+              name: agent.name,
+              tool,
+              enabled: true,
+              settings: {
+                model: agent.model,
+                instructions: agent.instructions,
+              },
+              custom: {},
+            });
+          }
         }
 
         // Merge permissions

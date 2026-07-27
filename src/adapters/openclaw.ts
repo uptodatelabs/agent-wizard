@@ -20,6 +20,19 @@ export interface OpenClawConfig {
       };
       skills?: string[];
     }>;
+    list?: Array<{
+      id: string;
+      name?: string;
+      identity?: {
+        name?: string;
+        emoji?: string;
+        theme?: string;
+      };
+      model?: string;
+      workspace?: string;
+      tools?: Record<string, unknown> | string[];
+      [key: string]: unknown;
+    }>;
   };
   channels?: Record<string, {
     enabled?: boolean;
@@ -144,15 +157,32 @@ export class OpenClawAdapter {
 
   private toAgentConfig(openclawConfig: OpenClawConfig): AgentConfig {
     const agents: Agent[] = [];
-    
+    const defaultModel = openclawConfig.agents.defaults.model?.primary || 'default';
+
+    // Support both `agents.entries` (Record) and `agents.list` (array) shapes
     if (openclawConfig.agents?.entries) {
       for (const [id, entry] of Object.entries(openclawConfig.agents.entries)) {
         agents.push({
           id,
           name: entry.identity?.name || id,
           role: 'coder',
-          model: openclawConfig.agents.defaults.model?.primary || 'default',
+          model: defaultModel,
           instructions: entry.identity?.theme || '',
+          tools: openclawConfig.tools?.allow || [],
+          guardrails: [],
+        });
+      }
+    }
+
+    if (Array.isArray(openclawConfig.agents?.list)) {
+      for (const item of openclawConfig.agents.list) {
+        if (!item?.id) continue;
+        agents.push({
+          id: item.id,
+          name: item.name || item.identity?.name || item.id,
+          role: 'coder',
+          model: item.model || defaultModel,
+          instructions: item.identity?.theme || '',
           tools: openclawConfig.tools?.allow || [],
           guardrails: [],
         });
@@ -179,31 +209,52 @@ export class OpenClawAdapter {
 
   private fromAgentConfig(config: AgentConfig, existing: Partial<OpenClawConfig> = {}): OpenClawConfig {
     const entries: Record<string, any> = { ...(existing.agents?.entries || {}) };
+    const list: any[] = Array.isArray(existing.agents?.list)
+      ? existing.agents.list.map((item) => ({ ...item }))
+      : [];
 
     for (const agent of config.agents) {
-      entries[agent.id] = {
-        ...entries[agent.id],
+      const agentDef = {
+        ...(entries[agent.id] || list.find((l) => l.id === agent.id) || {}),
+        id: agent.id,
+        name: agent.name,
         identity: {
-          ...entries[agent.id]?.identity,
+          ...(entries[agent.id]?.identity || list.find((l) => l.id === agent.id)?.identity || {}),
           name: agent.name,
         },
       };
+
+      // Preserve the existing shape: if the config used `list`, keep it as a list
+      if (Array.isArray(existing.agents?.list)) {
+        const idx = list.findIndex((l) => l.id === agent.id);
+        if (idx >= 0) list[idx] = agentDef;
+        else list.push(agentDef);
+      } else {
+        entries[agent.id] = agentDef;
+      }
     }
 
     const defaults = existing.agents?.defaults || { workspace: '~/.openclaw/workspace' };
     const primaryModel = config.agents[0]?.model;
 
+    const agentsShape: any = {
+      defaults: {
+        ...defaults,
+        workspace: defaults.workspace || '~/.openclaw/workspace',
+        ...(primaryModel ? { model: { primary: primaryModel, ...defaults.model } } : {}),
+      },
+    };
+    // Keep whichever shape(s) already existed
+    if (Array.isArray(existing.agents?.list)) {
+      agentsShape.list = list;
+    } else {
+      agentsShape.entries = entries;
+    }
+
     return {
       ...existing,
       $schema: existing.$schema,
-      agents: {
-        defaults: {
-          ...defaults,
-          workspace: defaults.workspace || '~/.openclaw/workspace',
-          ...(primaryModel ? { model: { primary: primaryModel, ...defaults.model } } : {}),
-        },
-        entries,
-      },
+      agents: agentsShape,
       channels: existing.channels,
       models: existing.models,
       tools: {
