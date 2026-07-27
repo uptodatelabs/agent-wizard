@@ -4,8 +4,16 @@
   "description": "AI coding assistant configuration wizard - Set up your AI tools in minutes, not hours",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
+  "module": "dist/index.mjs",
   "bin": {
-    "agent-wizard": "./dist/cli.js"
+    "agent-wizard": "./dist/cli.mjs"
+  },
+  "exports": {
+    ".": {
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
   },
   "files": [
     "dist",

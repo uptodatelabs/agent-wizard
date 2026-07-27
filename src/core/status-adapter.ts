@@ -1,6 +1,7 @@
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import JSON5 from 'json5';
 import { AgentStatus, AgentInfo, DashboardData } from './status';
 import { OpenClawAdapter } from '../adapters/openclaw';
 import { HermesAdapter } from '../adapters/hermes';
@@ -59,47 +60,32 @@ export class StatusAdapter {
 
   private async getOpenClawStatus(): Promise<AgentStatus> {
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
-    
-    try {
-      const content = await fs.readFile(configPath, 'utf-8');
-      const config = JSON.parse(content);
-      
-      const agents: AgentInfo[] = [];
-      const entries = config.agents?.entries || {};
-      
-      for (const [id, entry] of Object.entries(entries) as [string, any][]) {
-        agents.push({
-          id,
-          name: entry.identity?.name || id,
-          model: config.agents?.defaults?.model?.primary,
-          role: 'coder',
-          enabled: true,
-          status: 'active',
-          config: entry,
-        });
-      }
 
-      return {
-        tool: 'openclaw',
-        toolName: 'OpenClaw',
-        status: agents.length > 0 ? 'configured' : 'not-configured',
-        agents,
-        configValid: true,
-        configPath,
-        lastChecked: new Date(),
-        details: {
-          scopes: ['user'],
-          permissions: {
-            allow: config.tools?.allow?.length || 0,
-            deny: config.tools?.deny?.length || 0,
-          },
-        },
-      };
+    let content: string;
+    try {
+      content = await fs.readFile(configPath, 'utf-8');
     } catch {
+      // Config file absent -> not configured (not invalid)
       return {
         tool: 'openclaw',
         toolName: 'OpenClaw',
         status: 'not-configured',
+        agents: [],
+        configValid: null,
+        configPath,
+        lastChecked: new Date(),
+        details: {},
+      };
+    }
+
+    let config: any;
+    try {
+      config = JSON5.parse(content);
+    } catch {
+      return {
+        tool: 'openclaw',
+        toolName: 'OpenClaw',
+        status: 'error',
         agents: [],
         configValid: false,
         configPath,
@@ -107,62 +93,70 @@ export class StatusAdapter {
         details: {},
       };
     }
+
+    const validation = OpenClawAdapter.validateStructure(config);
+    const agents: AgentInfo[] = [];
+    const entries = config.agents?.entries || {};
+
+    for (const [id, entry] of Object.entries(entries) as [string, any][]) {
+      agents.push({
+        id,
+        name: entry.identity?.name || id,
+        model: config.agents?.defaults?.model?.primary,
+        role: 'coder',
+        enabled: true,
+        status: 'active',
+        config: entry,
+      });
+    }
+
+    return {
+      tool: 'openclaw',
+      toolName: 'OpenClaw',
+      status: agents.length > 0 ? 'configured' : 'not-configured',
+      agents,
+      configValid: validation.valid,
+      configPath,
+      lastChecked: new Date(),
+      details: {
+        scopes: ['user'],
+        permissions: {
+          allow: config.tools?.allow?.length || 0,
+          deny: config.tools?.deny?.length || 0,
+        },
+      },
+    };
   }
 
   private async getHermesStatus(): Promise<AgentStatus> {
     const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
     const profilesDir = path.join(os.homedir(), '.hermes', 'profiles');
-    
+
+    let content: string;
     try {
-      const yaml = await import('yaml');
-      const content = await fs.readFile(configPath, 'utf-8');
-      const config = yaml.parse(content);
-      
-      const agents: AgentInfo[] = [];
-      const personalities = config.agent?.personalities || {};
-      
-      for (const [name, instructions] of Object.entries(personalities) as [string, string][]) {
-        agents.push({
-          id: name,
-          name,
-          model: config.model?.default,
-          role: 'coder',
-          enabled: true,
-          status: 'active',
-          config: { instructions },
-        });
-      }
-
-      // Count profiles
-      let profileCount = 0;
-      try {
-        const entries = await fs.readdir(profilesDir, { withFileTypes: true });
-        profileCount = entries.filter(e => e.isDirectory()).length;
-      } catch {
-        // Profiles directory doesn't exist
-      }
-
-      return {
-        tool: 'hermes',
-        toolName: 'Hermes',
-        status: agents.length > 0 ? 'configured' : 'not-configured',
-        agents,
-        configValid: true,
-        configPath,
-        lastChecked: new Date(),
-        details: {
-          profiles: profileCount,
-          permissions: {
-            allow: 0,
-            deny: 0,
-          },
-        },
-      };
+      content = await fs.readFile(configPath, 'utf-8');
     } catch {
       return {
         tool: 'hermes',
         toolName: 'Hermes',
         status: 'not-configured',
+        agents: [],
+        configValid: null,
+        configPath,
+        lastChecked: new Date(),
+        details: {},
+      };
+    }
+
+    let config: any;
+    try {
+      const yaml = await import('yaml');
+      config = yaml.parse(content);
+    } catch {
+      return {
+        tool: 'hermes',
+        toolName: 'Hermes',
+        status: 'error',
         agents: [],
         configValid: false,
         configPath,
@@ -170,6 +164,48 @@ export class StatusAdapter {
         details: {},
       };
     }
+
+    const validation = HermesAdapter.validateStructure(config);
+    const agents: AgentInfo[] = [];
+    const personalities = config.agent?.personalities || {};
+
+    for (const [name, instructions] of Object.entries(personalities) as [string, string][]) {
+      agents.push({
+        id: name,
+        name,
+        model: config.model?.default,
+        role: 'coder',
+        enabled: true,
+        status: 'active',
+        config: { instructions },
+      });
+    }
+
+    // Count profiles
+    let profileCount = 0;
+    try {
+      const entries = await fs.readdir(profilesDir, { withFileTypes: true });
+      profileCount = entries.filter(e => e.isDirectory()).length;
+    } catch {
+      // Profiles directory doesn't exist
+    }
+
+    return {
+      tool: 'hermes',
+      toolName: 'Hermes',
+      status: agents.length > 0 ? 'configured' : 'not-configured',
+      agents,
+      configValid: validation.valid,
+      configPath,
+      lastChecked: new Date(),
+      details: {
+        profiles: profileCount,
+        permissions: {
+          allow: 0,
+          deny: 0,
+        },
+      },
+    };
   }
 
   private async getClaudeCodeStatus(): Promise<AgentStatus> {
@@ -209,7 +245,7 @@ export class StatusAdapter {
       toolName: 'Claude Code',
       status: foundScopes.length > 0 ? 'configured' : 'not-configured',
       agents,
-      configValid: foundScopes.length > 0,
+      configValid: foundScopes.length > 0 ? true : null,
       configPath: '~/.claude/settings.json',
       lastChecked: new Date(),
       details: {
@@ -259,7 +295,7 @@ export class StatusAdapter {
       toolName: 'Cursor',
       status: rulesCount > 0 ? 'configured' : 'not-configured',
       agents,
-      configValid: rulesCount > 0,
+      configValid: rulesCount > 0 ? true : null,
       configPath: '.cursor/rules/',
       lastChecked: new Date(),
       details: {
@@ -305,7 +341,7 @@ export class StatusAdapter {
       toolName: 'GitHub Copilot',
       status: agents.length > 0 ? 'configured' : 'not-configured',
       agents,
-      configValid: agents.length > 0,
+      configValid: agents.length > 0 ? true : null,
       configPath: '.github/copilot-instructions.md',
       lastChecked: new Date(),
       details: {
@@ -377,7 +413,7 @@ export class StatusAdapter {
       toolName: 'Aider',
       status: agents.length > 0 ? 'configured' : 'not-configured',
       agents,
-      configValid: agents.length > 0,
+      configValid: agents.length > 0 ? true : null,
       configPath: configPath || '.aider.conf.yml',
       lastChecked: new Date(),
       details: {},

@@ -5,7 +5,7 @@ export interface AgentStatus {
   toolName: string;
   status: ToolStatus;
   agents: AgentInfo[];
-  configValid: boolean;
+  configValid: boolean | null;
   configPath: string;
   lastChecked: Date;
   details: ToolDetails;

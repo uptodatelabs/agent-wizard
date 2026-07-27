@@ -82,13 +82,15 @@ export const ToolStatusCard: React.FC<ToolStatusCardProps> = ({ status, selected
         <Text color="cyan">{status.agents.length}</Text>
       </Box>
 
-      {/* Config Status */}
-      <Box>
-        <Text color="gray">Config: </Text>
-        <Text color={status.configValid ? 'green' : 'red'}>
-          {status.configValid ? 'Valid ✓' : 'Invalid ✗'}
-        </Text>
-      </Box>
+      {/* Config Status - only when a config file is expected/present */}
+      {status.configValid !== null && (
+        <Box>
+          <Text color="gray">Config: </Text>
+          <Text color={status.configValid ? 'green' : 'red'}>
+            {status.configValid ? 'Valid ✓' : 'Invalid ✗'}
+          </Text>
+        </Box>
+      )}
 
       {/* Additional Details */}
       {status.details.scopes && (
