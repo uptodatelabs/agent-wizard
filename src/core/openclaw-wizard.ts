@@ -107,7 +107,7 @@ export class OpenClawWizard implements AgentEditorPort {
   async saveConfig(config: OpenClawConfigShape): Promise<void> {
     await fs.mkdir(path.dirname(this.configPath), { recursive: true });
     await backupFile(this.configPath);
-    await fs.writeFile(this.configPath, JSON5.stringify(config, null, 2));
+    await fs.writeFile(this.configPath, JSON.stringify(config, null, 2));
   }
 
   // ---- Programmatic operations (also used by the interactive menu) ----

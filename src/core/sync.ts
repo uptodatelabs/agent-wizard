@@ -109,7 +109,7 @@ export class ProfileSync {
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
     await backupFile(configPath);
-    await fs.writeFile(configPath, JSON5.stringify(merged, null, 2));
+    await fs.writeFile(configPath, JSON.stringify(merged, null, 2));
   }
 
   private async syncToHermes(agent: AgentProfile, _profile: Profile): Promise<void> {
