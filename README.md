@@ -4,7 +4,6 @@ AI coding assistant configuration wizard. Set up your AI tools in minutes, not h
 
 [![npm version](https://img.shields.io/npm/v/agent-wizard.svg)](https://www.npmjs.com/package/agent-wizard)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
-[![Downloads](https://img.shields.io/npm/dm/agent-wizard.svg)](https://www.npmjs.com/package/agent-wizard)
 
 ## Overview
 
@@ -17,34 +16,7 @@ AgentWizard is a CLI tool that helps you configure and manage AI coding assistan
 - **Profile Management**: Create and manage profiles for different projects or workflows
 - **Real-time Dashboard**: Monitor the status of all your AI assistants in one place
 - **Sync Capabilities**: Keep your configurations in sync across different tools
-
-## Features
-
-### Core Features
-
-- **Multi-tool Support**: Configure 6+ AI coding assistants
-- **Smart Detection**: Automatically detect project type and tech stack
-- **Interactive Wizard**: Step-by-step configuration with sensible defaults
-- **Configuration Validation**: Verify your settings before applying
-
-### Profile Management
-
-- **Create Profiles**: Save different configurations for different projects
-- **Switch Profiles**: Quickly switch between configurations
-- **Export/Import**: Share profiles with your team
-- **Agent-specific Settings**: Configure each agent individually
-
-### Dashboard & Monitoring
-
-- **Real-time Status**: See which tools are configured and active
-- **Agent Details**: View detailed information about each agent
-- **Interactive UI**: Navigate with keyboard, refresh in real-time
-
-### Sync & Integration
-
-- **Bi-directional Sync**: Push profile settings to tools, or import from existing configurations
-- **Cross-tool Compatibility**: Settings work across all supported tools
-- **Version Control Friendly**: Configuration files work with Git
+- **Non-destructive**: Existing tool configuration is always preserved (merged, never overwritten)
 
 ## Installation
 
@@ -74,10 +46,10 @@ agent-wizard detect
 ```
 
 This will scan your project and show:
-- Project type (web, mobile, CLI, library)
+- Project type (web, mobile, CLI, library, api, unknown)
 - Programming languages
 - Frameworks
-- Existing AI tool configurations
+- Existing AI tool configurations (detected from each tool's real config location)
 
 ### 2. Initialize Configuration
 
@@ -89,7 +61,9 @@ This launches an interactive wizard that will:
 1. Detect your project
 2. Ask which AI tools you want to configure
 3. Guide you through settings for each tool
-4. Apply the configuration
+4. Apply the configuration (merging into each tool's existing config)
+
+> `agent-wizard configure` runs the exact same interactive flow as `init`.
 
 ### 3. Check Status
 
@@ -113,10 +87,10 @@ Opens an interactive dashboard to monitor all your AI assistants.
 
 | Command | Description |
 |---------|-------------|
-| `agent-wizard init` | Initialize project configuration |
+| `agent-wizard init` | Initialize project configuration (interactive wizard) |
 | `agent-wizard detect` | Detect project type and tech stack |
-| `agent-wizard configure` | Interactive configuration wizard |
-| `agent-wizard validate` | Validate configuration for all tools |
+| `agent-wizard configure` | Interactive configuration wizard (same flow as `init`) |
+| `agent-wizard validate` | Validate configuration for all detected tools |
 | `agent-wizard list` | List detected configurations |
 
 ### Profile Management
@@ -137,7 +111,7 @@ Opens an interactive dashboard to monitor all your AI assistants.
 |---------|-------------|
 | `agent-wizard agent add <profile> <tool>` | Add agent to profile |
 | `agent-wizard agent remove <profile> <agentId>` | Remove agent from profile |
-| `agent-wizard agent config <profile> <agentId> <key> <value>` | Update agent setting |
+| `agent-wizard agent config <profile> <agentId> <key> <value>` | Update agent setting (dot-notation keys supported, e.g. `terminal.timeout`) |
 | `agent-wizard agent list <profile>` | List agents in profile |
 
 ### Status & Monitoring
@@ -152,8 +126,8 @@ Opens an interactive dashboard to monitor all your AI assistants.
 
 | Command | Description |
 |---------|-------------|
-| `agent-wizard sync to-tools <profile>` | Sync profile settings to tool configurations |
-| `agent-wizard sync from-tools` | Import existing tool configurations to a new profile |
+| `agent-wizard sync to-tools <profile>` | Merge profile settings into tool configurations |
+| `agent-wizard sync from-tools` | Import existing tool configurations into a new profile |
 
 ## Supported Tools
 
@@ -161,10 +135,28 @@ Opens an interactive dashboard to monitor all your AI assistants.
 |------|---------------|-----------------|--------|
 | **OpenClaw** | JSON5 | `~/.openclaw/openclaw.json` | ✅ Supported |
 | **Hermes** | YAML | `~/.hermes/config.yaml` | ✅ Supported |
-| **Claude Code** | JSON | `~/.claude/settings.json` | ✅ Supported |
+| **Claude Code** | JSON | `~/.claude/settings.json` (user) or `.claude/settings.json` (project) | ✅ Supported |
 | **Cursor** | Markdown (.mdc) | `.cursor/rules/` | ✅ Supported |
 | **GitHub Copilot** | Markdown | `.github/copilot-instructions.md` | ✅ Supported |
-| **Aider** | YAML | `.aider.conf.yml` | ✅ Supported |
+| **Aider** | YAML | `.aider.conf.yml` (cwd or home) | ✅ Supported |
+
+### Notes on configuration locations
+
+- **OpenClaw**, **Hermes**, and **Claude Code** are user-global tools. AgentWizard reads/writes their config in your home directory (`~`). Claude Code also supports a project-scoped `.claude/settings.json` for detection.
+- **Cursor**, **GitHub Copilot**, and **Aider** are project-scoped. AgentWizard reads/writes them relative to the current working directory.
+
+## Non-destructive configuration
+
+AgentWizard never destroys your existing tool configuration:
+
+- When writing to OpenClaw, Hermes, Claude Code, or Aider, the existing file is read first and your new settings are **merged** into it. Untouched keys (channels, providers, mcp servers, hooks, sandbox, env, etc.) are preserved.
+- For Cursor, AgentWizard writes dedicated `agent-wizard-*.mdc` rule files, leaving your other rules untouched.
+- For Copilot, pre-existing custom instructions above the AgentWizard-managed section are preserved.
+- User-supplied secrets (API keys, bot tokens) in config files are left as-is; AgentWizard does not regenerate or overwrite them.
+
+## `validate` behavior
+
+`agent-wizard validate` checks each detected tool's configuration for structural correctness (required fields, correct types) — not just whether the file can be parsed. Example checks: OpenClaw requires `agents.defaults.workspace`; Claude Code requires `permissions.allow`/`deny` to be arrays when present; Cursor rule files must have valid `---` frontmatter.
 
 ## Configuration Examples
 
@@ -178,9 +170,8 @@ agent-wizard profile create my-project
 agent-wizard agent add my-project claude-code
 agent-wizard agent add my-project cursor
 
-# Configure agent settings
-agent-wizard agent config my-project claude-code model claude-3-5-sonnet
-agent-wizard agent config my-project cursor alwaysApply true
+# Configure agent settings (dot-notation key)
+agent-wizard agent config my-project claude-code model claude-sonnet-4-20250514
 
 # View the profile
 agent-wizard profile show my-project
@@ -192,7 +183,7 @@ agent-wizard profile show my-project
 # Import existing configurations
 agent-wizard sync from-tools
 
-# Export profile to tools
+# Merge profile settings into tools (preserves existing tool config)
 agent-wizard sync to-tools my-project
 ```
 
@@ -214,7 +205,7 @@ agent-wizard dashboard
 ```
 agent-wizard/
 ├── src/
-│   ├── adapters/           # Tool-specific adapters
+│   ├── adapters/           # Tool-specific adapters (detect/read/write/validate + merge)
 │   │   ├── openclaw.ts
 │   │   ├── hermes.ts
 │   │   ├── claude-code.ts
@@ -225,6 +216,7 @@ agent-wizard/
 │   │   ├── types.ts
 │   │   ├── detector.ts
 │   │   ├── wizard.ts
+│   │   ├── agent-wizard.ts
 │   │   ├── profile.ts
 │   │   ├── profile-manager.ts
 │   │   ├── sync.ts
@@ -236,7 +228,8 @@ agent-wizard/
 │   ├── cli/                # CLI entry point
 │   │   └── index.ts
 │   └── __tests__/          # Tests
-│       └── basic.test.ts
+│       ├── basic.test.ts
+│       └── integration.test.ts
 ├── dist/                   # Compiled output
 ├── package.json
 ├── tsconfig.json
@@ -266,18 +259,19 @@ npm test
 
 | Script | Description |
 |--------|-------------|
-| `npm run build` | Build the project |
+| `npm run build` | Build the project (CJS + ESM + type declarations) |
 | `npm run dev` | Watch mode for development |
-| `npm test` | Run tests |
-| `npm run typecheck` | Type checking |
-| `npm run lint` | Linting |
+| `npm test` | Run tests (vitest) |
+| `npm run test:run` | Run tests once |
+| `npm run typecheck` | Type checking (tsc --noEmit) |
+| `npm run lint` | Linting (ESLint 9 flat config) |
 
 ### Architecture
 
 AgentWizard follows a modular architecture:
 
-- **Adapters**: Each supported tool has its own adapter that handles configuration reading/writing
-- **Core**: Shared functionality like project detection, profile management, and status monitoring
+- **Adapters**: Each supported tool has its own adapter that handles configuration reading/writing/validation with non-destructive merging
+- **Core**: Shared functionality like project detection, profile management, status monitoring, and sync
 - **Dashboard**: Interactive TUI built with Ink (React for CLIs)
 - **CLI**: Command-line interface built with Commander.js
 
@@ -294,9 +288,8 @@ Contributions are welcome! Please follow these steps:
 ### Development Guidelines
 
 - Write tests for new features
-- Follow existing code style
+- Keep `npm run lint`, `npm run typecheck`, and `npm test` green
 - Update documentation as needed
-- Keep commits atomic and well-described
 
 ## License
 
@@ -304,13 +297,5 @@ This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENS
 
 ## Support
 
-- **Documentation**: [agentwizard.dev](https://agentwizard.dev)
 - **Issues**: [GitHub Issues](https://github.com/uptodatelabs/agent-wizard/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/uptodatelabs/agent-wizard/discussions)
-
-## Acknowledgments
-
-- [Ink](https://github.com/vadimdemedes/ink) - React for CLIs
-- [Commander.js](https://github.com/tj/commander.js) - CLI framework
-- [Chalk](https://github.com/chalk/chalk) - Terminal styling
-- All the AI coding assistant teams for their amazing tools
