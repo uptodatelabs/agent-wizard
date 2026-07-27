@@ -12,10 +12,13 @@ import { ClaudeCodeSettings } from '../../adapters/claude-code';
  * settings object (model, permissions, hooks, sandbox, ...). We surface it as
  * one editable agent whose raw settings are the entire settings object. Editing
  * a key (e.g. `model`, `permissions.allow`) maps directly onto the real file.
+ *
+ * The agent is identified by a single id. Callers may pass any id (the CLI uses
+ * "user", the dashboard uses "default") — it is ignored because there is only
+ * one settings scope. This keeps the CLI and dashboard interchangeable.
  */
 export class ClaudeCodeAgentEditor implements AgentEditorPort {
   readonly tool = 'claude-code';
-  private readonly agentId = 'user';
   private configPath = path.join(os.homedir(), '.claude', 'settings.json');
   private config: ClaudeCodeSettings = {};
 
@@ -33,28 +36,25 @@ export class ClaudeCodeAgentEditor implements AgentEditorPort {
     const cfg = await this.load();
     return [
       {
-        id: this.agentId,
+        id: 'default',
         name: 'Claude Code (user scope)',
         summary: cfg.model ? `model=${cfg.model}` : 'no model set',
       },
     ];
   }
 
-  async getAgentRaw(id: string): Promise<AgentSettings> {
+  async getAgentRaw(_id: string): Promise<AgentSettings> {
     const cfg = await this.load();
-    if (id !== this.agentId) throw new Error(`Agent '${id}' not found`);
     return cfg as unknown as AgentSettings;
   }
 
-  async setAgentKey(id: string, key: string, value: string): Promise<void> {
-    if (id !== this.agentId) throw new Error(`Agent '${id}' not found`);
+  async setAgentKey(_id: string, key: string, value: string): Promise<void> {
     const cfg = await this.load();
     setByPath(cfg as unknown as Record<string, unknown>, key, parseValue(value));
     await this.save();
   }
 
-  async unsetAgentKey(id: string, key: string): Promise<void> {
-    if (id !== this.agentId) throw new Error(`Agent '${id}' not found`);
+  async unsetAgentKey(_id: string, key: string): Promise<void> {
     const cfg = await this.load();
     deleteByPath(cfg as unknown as Record<string, unknown>, key);
     await this.save();
@@ -64,8 +64,8 @@ export class ClaudeCodeAgentEditor implements AgentEditorPort {
     throw new Error('Claude Code has a single settings scope; use set to edit keys');
   }
 
-  async removeAgent(id: string): Promise<void> {
-    throw new Error(`Cannot remove agent '${id}' (Claude Code has a single settings scope)`);
+  async removeAgent(_id: string): Promise<void> {
+    throw new Error('Cannot remove agent (Claude Code has a single settings scope)');
   }
 
   async save(): Promise<void> {

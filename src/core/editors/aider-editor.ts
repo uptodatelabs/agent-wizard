@@ -13,10 +13,12 @@ import { AiderConfig } from '../../adapters/aider';
  * ...). We surface it as one editable agent whose raw settings are the entire
  * config object. Editing a key (e.g. `model`, `architect`) maps directly onto
  * the real file. Home-directory config is used as the canonical location.
+ *
+ * The agent id is ignored (any id accepted) because there is only one config
+ * file — this keeps the CLI and dashboard interchangeable.
  */
 export class AiderAgentEditor implements AgentEditorPort {
   readonly tool = 'aider';
-  private readonly agentId = 'aider';
   private configPath = path.join(os.homedir(), '.aider.conf.yml');
   private config: AiderConfig = {};
 
@@ -34,28 +36,25 @@ export class AiderAgentEditor implements AgentEditorPort {
     const cfg = await this.load();
     return [
       {
-        id: this.agentId,
+        id: 'default',
         name: 'Aider',
         summary: cfg.model ? `model=${cfg.model}` : 'no model set',
       },
     ];
   }
 
-  async getAgentRaw(id: string): Promise<AgentSettings> {
+  async getAgentRaw(_id: string): Promise<AgentSettings> {
     const cfg = await this.load();
-    if (id !== this.agentId) throw new Error(`Agent '${id}' not found`);
     return cfg as unknown as AgentSettings;
   }
 
-  async setAgentKey(id: string, key: string, value: string): Promise<void> {
-    if (id !== this.agentId) throw new Error(`Agent '${id}' not found`);
+  async setAgentKey(_id: string, key: string, value: string): Promise<void> {
     const cfg = await this.load();
     setByPath(cfg as unknown as Record<string, unknown>, key, parseValue(value));
     await this.save();
   }
 
-  async unsetAgentKey(id: string, key: string): Promise<void> {
-    if (id !== this.agentId) throw new Error(`Agent '${id}' not found`);
+  async unsetAgentKey(_id: string, key: string): Promise<void> {
     const cfg = await this.load();
     deleteByPath(cfg as unknown as Record<string, unknown>, key);
     await this.save();
@@ -65,8 +64,8 @@ export class AiderAgentEditor implements AgentEditorPort {
     throw new Error('Aider has a single config file; use set to edit keys');
   }
 
-  async removeAgent(id: string): Promise<void> {
-    throw new Error(`Cannot remove agent '${id}' (Aider has a single config file)`);
+  async removeAgent(_id: string): Promise<void> {
+    throw new Error('Cannot remove agent (Aider has a single config file)');
   }
 
   async save(): Promise<void> {

@@ -60,21 +60,30 @@ describe('AgentEditorPort — all supported tools', () => {
 
     const ed = createAgentEditor('claude-code')!;
     const list = await ed.listAgents();
-    expect(list[0].id).toBe('user');
+    // Dashboard passes the agent id from status.agents ('default'); CLI uses 'user'.
+    // Both must work since Claude Code is a single settings scope.
+    expect(list[0].id).toBe('default');
 
-    await ed.setAgentKey('user', 'model', '"claude-sonnet"');
+    // Dashboard path (id 'default')
+    await ed.setAgentKey('default', 'model', '"claude-sonnet"');
     await ed.save();
     const rep = JSON.parse(await fs.readFile(path.join(dir, 'settings.json'), 'utf-8'));
     expect(rep.model).toBe('claude-sonnet');
     expect(rep.permissions.allow).toEqual(['Read']); // preserved
+
+    // CLI path (id 'user') also accepted
+    await ed.setAgentKey('user', 'model', '"claude-opus"');
+    const rep2 = JSON.parse(await fs.readFile(path.join(dir, 'settings.json'), 'utf-8'));
+    expect(rep2.model).toBe('claude-opus');
   });
 
   it('aider: config file as one agent (set key + backup)', async () => {
     await fs.writeFile(path.join(TMP, '.aider.conf.yml'), 'model: gpt-4\nauto-commits: true\n');
     const ed = createAgentEditor('aider')!;
     const list = await ed.listAgents();
-    expect(list[0].id).toBe('aider');
-    await ed.setAgentKey('aider', 'model', '"gpt-4o"');
+    expect(list[0].id).toBe('default');
+    // Dashboard passes 'default'; CLI passes 'aider' — both accepted
+    await ed.setAgentKey('default', 'model', '"gpt-4o"');
     await ed.save();
     const rep = (await import('yaml')).parse(await fs.readFile(path.join(TMP, '.aider.conf.yml'), 'utf-8'));
     expect(rep.model).toBe('gpt-4o');
