@@ -30,6 +30,12 @@ program
   .command('init')
   .description('Initialize project configuration')
   .action(async () => {
+    if (!process.stdin.isTTY) {
+      console.error(chalk.red('\n❌ Error:') + ' `init` is an interactive wizard and requires a TTY.');
+      console.error('Run it in an interactive terminal, or use `profile create <name> -d "desc"` + `agent add` for non-interactive setup.\n');
+      process.exit(1);
+    }
+
     console.log(chalk.bold.cyan('\n🧙 AgentWizard Init\n'));
     
     const wizard = new ConfigWizard();
@@ -97,6 +103,12 @@ program
   .command('configure')
   .description('Interactive configuration wizard')
   .action(async () => {
+    if (!process.stdin.isTTY) {
+      console.error(chalk.red('\n❌ Error:') + ' `configure` is an interactive wizard and requires a TTY.');
+      console.error('Run it in an interactive terminal.\n');
+      process.exit(1);
+    }
+
     console.log(chalk.bold.cyan('\n⚙️  AgentWizard Configure\n'));
     
     const wizard = new ConfigWizard();
@@ -239,14 +251,16 @@ profileCmd
         process.exit(1);
       }
 
-      const { description } = await inquirer.prompt([
-        {
-          type: 'input',
-          name: 'description',
-          message: 'Profile description:',
-          default: options.description || '',
-        },
-      ]);
+      const description = process.stdin.isTTY
+        ? (await inquirer.prompt([
+            {
+              type: 'input',
+              name: 'description',
+              message: 'Profile description:',
+              default: options.description || '',
+            },
+          ])).description
+        : (options.description || `${name} profile`);
 
       const profile = {
         name,
@@ -319,14 +333,16 @@ profileCmd
       }
 
       if (!options.force) {
-        const { confirmed } = await inquirer.prompt([
-          {
-            type: 'confirm',
-            name: 'confirmed',
-            message: `Delete profile '${name}'?`,
-            default: false,
-          },
-        ]);
+        const confirmed = process.stdin.isTTY
+          ? (await inquirer.prompt([
+              {
+                type: 'confirm',
+                name: 'confirmed',
+                message: `Delete profile '${name}'?`,
+                default: false,
+              },
+            ])).confirmed
+          : false;
 
         if (!confirmed) {
           console.log(chalk.gray('Cancelled.'));
@@ -592,7 +608,7 @@ statusCmd
         console.log(`\n  ${statusIcon} ${chalk.bold(status.toolName)}`);
         console.log(`    Status: ${getStatusColor(status.status)}`);
         console.log(`    Agents: ${chalk.cyan(agentCount.toString())}`);
-        console.log(`    Config: ${status.configValid ? chalk.green('Valid ✓') : chalk.red('Invalid ✗')}`);
+        console.log(`    Config: ${status.configValid === null ? chalk.gray('N/A') : status.configValid ? chalk.green('Valid ✓') : chalk.red('Invalid ✗')}`);
         
         if (status.details.scopes) {
           console.log(`    Scopes: ${chalk.gray(status.details.scopes.join(', '))}`);
@@ -636,7 +652,7 @@ statusCmd
       console.log(`  ${statusIcon} ${chalk.bold(status.toolName)}`);
       console.log(`  Status: ${getStatusColor(status.status)}`);
       console.log(`  Config Path: ${chalk.gray(status.configPath)}`);
-      console.log(`  Config Valid: ${status.configValid ? chalk.green('Yes ✓') : chalk.red('No ✗')}`);
+      console.log(`  Config Valid: ${status.configValid === null ? chalk.gray('N/A') : status.configValid ? chalk.green('Yes ✓') : chalk.red('No ✗')}`);
       console.log(`  Last Checked: ${chalk.gray(status.lastChecked.toLocaleString())}`);
       
       if (status.agents.length > 0) {

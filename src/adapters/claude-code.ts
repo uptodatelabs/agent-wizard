@@ -158,8 +158,12 @@ export class ClaudeCodeAdapter {
       return { valid: false, errors: ['Config is not an object'] };
     }
     if (config.permissions) {
-      if (!Array.isArray(config.permissions.allow) || !Array.isArray(config.permissions.deny)) {
-        errors.push('"permissions.allow" and "permissions.deny" must be arrays');
+      const { allow, deny } = config.permissions;
+      if (allow !== undefined && !Array.isArray(allow)) {
+        errors.push('"permissions.allow" must be an array');
+      }
+      if (deny !== undefined && !Array.isArray(deny)) {
+        errors.push('"permissions.deny" must be an array');
       }
     }
     if (config.hooks && typeof config.hooks !== 'object') {
