@@ -16,6 +16,8 @@ import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter } from '../adapters/aider';
 import { OpenClawWizard } from '../core/openclaw-wizard';
 import { createAgentEditor } from '../core/agent-editor';
+import { isSupportedTool } from '../core/tools';
+import pkg from '../../package.json';
 
 const program = new Command();
 const profileManager = new ProfileManagerImpl();
@@ -26,7 +28,7 @@ const openclawWizard = new OpenClawWizard();
 program
   .name('agent-wizard')
   .description('AI coding assistant configuration wizard')
-  .version('0.1.0');
+  .version(pkg.version);
 
 // Init command
 program
@@ -395,15 +397,11 @@ profileCmd
   .description('Import profile from stdin')
   .action(async () => {
     console.log(chalk.bold.cyan('\n📥 Importing profile...\n'));
-    
+
     try {
-      const chunks: Buffer[] = [];
-      process.stdin.on('data', (chunk) => chunks.push(chunk));
-      process.stdin.on('end', async () => {
-        const data = Buffer.concat(chunks).toString();
-        const profile = await profileManager.importProfile(data);
-        console.log(chalk.green(`\n✅ Profile '${profile.name}' imported.\n`));
-      });
+      const data = await readStdin();
+      const profile = await profileManager.importProfile(data);
+      console.log(chalk.green(`\n✅ Profile '${profile.name}' imported.\n`));
     } catch (error) {
       console.error(chalk.red('\n❌ Error:'), error);
       process.exit(1);
@@ -422,8 +420,14 @@ agentCmd
   .option('-n, --name <name>', 'Agent name')
   .action(async (profileName: string, tool: string, options: { name?: string }) => {
     console.log(chalk.bold.cyan(`\n➕ Adding ${tool} agent to profile '${profileName}'\n`));
-    
+
     try {
+      if (!isSupportedTool(tool)) {
+        console.error(chalk.red(`Unsupported tool '${tool}'.`));
+        console.log('Supported tools: openclaw, hermes, claude-code, cursor, copilot, aider');
+        process.exit(1);
+      }
+
       const profile = await profileManager.readProfile(profileName);
       if (!profile) {
         console.error(chalk.red(`Profile '${profileName}' not found.`));
@@ -569,6 +573,11 @@ syncCmd
 
       if (!dryRun && result.failed.length === 0 && result.success.length === 0) {
         console.log(chalk.gray('No enabled agents to sync.'));
+      }
+
+      // Failures in a non-dry-run sync should surface as a non-zero exit.
+      if (!dryRun && result.failed.length > 0) {
+        process.exitCode = 1;
       }
 
       console.log('');
@@ -1006,6 +1015,16 @@ agentsCmd
       process.exit(1);
     }
   });
+
+/** Read all of stdin as text (used by `profile import`). */
+function readStdin(): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    process.stdin.on('data', (chunk) => chunks.push(chunk as Buffer));
+    process.stdin.on('end', () => resolve(Buffer.concat(chunks).toString()));
+    process.stdin.on('error', reject);
+  });
+}
 
 // Dashboard command
 program

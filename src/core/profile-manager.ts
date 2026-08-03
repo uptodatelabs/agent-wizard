@@ -4,6 +4,32 @@ import * as os from 'os';
 import * as yaml from 'yaml';
 import { backupFile } from './backup';
 import { Profile, AgentProfile } from './profile';
+import { isSupportedTool } from './tools';
+
+/** Validate a profile name used as a directory name. Returns an error message
+ *  or null when valid. Guards against path traversal (`..`, separators) and
+ *  control characters. */
+export function validateProfileName(name: string): string | null {
+  if (typeof name !== 'string' || name.trim().length === 0) {
+    return 'Profile name must not be empty';
+  }
+  if (name === '.' || name === '..') {
+    return `Invalid profile name '${name}'`;
+  }
+  if (name.includes('/') || name.includes('\\')) {
+    return 'Profile name must not contain path separators';
+  }
+  for (const ch of name) {
+    const code = ch.charCodeAt(0);
+    if (code < 0x20 || code === 0x7f) {
+      return 'Profile name must not contain control characters';
+    }
+  }
+  if (name !== name.trim()) {
+    return 'Profile name must not have leading or trailing whitespace';
+  }
+  return null;
+}
 
 export class ProfileManagerImpl {
   private readonly globalDir: string;
@@ -14,6 +40,13 @@ export class ProfileManagerImpl {
   constructor() {
     this.globalDir = path.join(os.homedir(), '.agent-wizard');
     this.localDir = path.join(process.cwd(), '.agent-wizard');
+  }
+
+  private assertValidProfileName(name: string): void {
+    const error = validateProfileName(name);
+    if (error) {
+      throw new Error(error);
+    }
   }
 
   async listProfiles(): Promise<Profile[]> {
@@ -44,6 +77,8 @@ export class ProfileManagerImpl {
   }
 
   async readProfile(name: string): Promise<Profile | null> {
+    this.assertValidProfileName(name);
+
     // Check local first, then global
     const dirs = [this.localDir, this.globalDir];
     
@@ -73,6 +108,7 @@ export class ProfileManagerImpl {
   }
 
   async writeProfile(profile: Profile): Promise<void> {
+    this.assertValidProfileName(profile.name);
     const dir = await this.getProfileDir(profile.name);
     await fs.mkdir(dir, { recursive: true });
     
@@ -83,6 +119,7 @@ export class ProfileManagerImpl {
   }
 
   async deleteProfile(name: string): Promise<void> {
+    this.assertValidProfileName(name);
     const dir = await this.getProfileDir(name);
     await fs.rm(dir, { recursive: true, force: true });
   }
@@ -181,6 +218,7 @@ export class ProfileManagerImpl {
   }
 
   async setDefaultProfile(name: string): Promise<void> {
+    this.assertValidProfileName(name);
     const profile = await this.readProfile(name);
     if (!profile) {
       throw new Error(`Profile '${name}' not found`);
@@ -206,6 +244,7 @@ export class ProfileManagerImpl {
   }
 
   async exportProfile(name: string): Promise<string> {
+    this.assertValidProfileName(name);
     const profile = await this.readProfile(name);
     if (!profile) {
       throw new Error(`Profile '${name}' not found`);
@@ -258,6 +297,11 @@ export class ProfileManagerImpl {
   }
 
   async createAgentProfile(profileName: string, tool: string, name?: string): Promise<AgentProfile> {
+    if (!isSupportedTool(tool)) {
+      throw new Error(
+        `Unsupported tool '${tool}'. Supported tools: ${['openclaw', 'hermes', 'claude-code', 'cursor', 'copilot', 'aider'].join(', ')}`,
+      );
+    }
     const defaults = await this.getAgentDefaultSettings(tool);
     
     const agent: AgentProfile = {

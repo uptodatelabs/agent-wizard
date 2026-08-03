@@ -9,6 +9,7 @@ import { ClaudeCodeAdapter, ClaudeCodeSettings } from '../adapters/claude-code';
 import { CursorAdapter } from '../adapters/cursor';
 import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter, AiderConfig } from '../adapters/aider';
+import { SUPPORTED_TOOLS } from './tools';
 
 export interface SyncOptions {
   /** When true, compute the merged configuration and report what *would* be
@@ -36,8 +37,6 @@ export interface SyncResult {
   preview: SyncPreviewEntry[];
 }
 
-const SUPPORTED_TOOLS = new Set(['openclaw', 'hermes', 'claude-code', 'cursor', 'copilot', 'aider']);
-
 interface WritePlan {
   tool: string;
   path: string;
@@ -64,7 +63,7 @@ export class ProfileSync {
     for (const agent of profile.agents) {
       if (!agent.enabled) continue;
 
-      if (!SUPPORTED_TOOLS.has(agent.tool)) {
+      if (!SUPPORTED_TOOLS.includes(agent.tool as (typeof SUPPORTED_TOOLS)[number])) {
         failed.push({ tool: agent.tool, reason: `Unsupported tool '${agent.tool}'` });
         continue;
       }
