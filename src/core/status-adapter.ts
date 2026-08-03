@@ -10,6 +10,20 @@ import { CursorAdapter } from '../adapters/cursor';
 import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter } from '../adapters/aider';
 import { HERMES_BUILTIN_PERSONALITIES } from './editors/hermes-editor';
+import { findExecutable } from './tool-check';
+
+/**
+ * Status semantics (v1.0):
+ *  - `active`          config exists, is valid, and the tool's CLI binary is on PATH
+ *  - `configured`      config exists and is valid, but the binary was not found
+ *  - `error`           config exists but failed to parse or validate
+ *  - `not-configured`  no config file found
+ */
+function resolveToolStatus(configValid: boolean | null, hasBinary: boolean): import('./status').ToolStatus {
+  if (configValid === null) return 'not-configured';
+  if (!configValid) return 'error';
+  return hasBinary ? 'active' : 'configured';
+}
 
 export class StatusAdapter {
   private openclawAdapter = new OpenClawAdapter();
@@ -61,6 +75,7 @@ export class StatusAdapter {
 
   private async getOpenClawStatus(): Promise<AgentStatus> {
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
+    const hasBinary = findExecutable(['openclaw']) !== null;
 
     let content: string;
     try {
@@ -130,7 +145,7 @@ export class StatusAdapter {
     return {
       tool: 'openclaw',
       toolName: 'OpenClaw',
-      status: agents.length > 0 ? 'configured' : 'not-configured',
+      status: resolveToolStatus(validation.valid, hasBinary),
       agents,
       configValid: validation.valid,
       configPath,
@@ -147,6 +162,7 @@ export class StatusAdapter {
 
   private async getHermesStatus(): Promise<AgentStatus> {
     const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
+    const hasBinary = findExecutable(['hermes']) !== null;
     const profilesDir = path.join(os.homedir(), '.hermes', 'profiles');
 
     let content: string;
@@ -211,7 +227,7 @@ export class StatusAdapter {
     return {
       tool: 'hermes',
       toolName: 'Hermes',
-      status: agents.length > 0 ? 'configured' : 'not-configured',
+      status: resolveToolStatus(validation.valid, hasBinary),
       agents,
       configValid: validation.valid,
       configPath,
@@ -232,6 +248,7 @@ export class StatusAdapter {
     let model: string | undefined;
     let allowCount = 0;
     let denyCount = 0;
+    const validationErrors: string[] = [];
     for (const scope of scopes) {
       try {
         const settings = await this.claudeCodeAdapter.readScope(scope);
@@ -240,6 +257,9 @@ export class StatusAdapter {
           if (settings.model) model = settings.model;
           if (settings.permissions?.allow) allowCount += settings.permissions.allow.length;
           if (settings.permissions?.deny) denyCount += settings.permissions.deny.length;
+          // Real schema validation per scope
+          const check = ClaudeCodeAdapter.validateStructure(settings);
+          if (!check.valid) validationErrors.push(...check.errors);
         }
       } catch {
         // Continue
@@ -258,12 +278,15 @@ export class StatusAdapter {
       });
     }
 
+    const configValid = foundScopes.length > 0 ? validationErrors.length === 0 : null;
+    const hasBinary = findExecutable(['claude', 'claude-code']) !== null;
+
     return {
       tool: 'claude-code',
       toolName: 'Claude Code',
-      status: foundScopes.length > 0 ? 'configured' : 'not-configured',
+      status: resolveToolStatus(configValid, hasBinary),
       agents,
-      configValid: foundScopes.length > 0 ? true : null,
+      configValid,
       configPath: '~/.claude/settings.json',
       lastChecked: new Date(),
       details: {
@@ -275,6 +298,7 @@ export class StatusAdapter {
 
   private async getCursorStatus(): Promise<AgentStatus> {
     const rulesDir = path.join(process.cwd(), '.cursor', 'rules');
+    const hasBinary = findExecutable(['cursor']) !== null;
     const agents: AgentInfo[] = [];
     let rulesCount = 0;
     
@@ -311,7 +335,7 @@ export class StatusAdapter {
     return {
       tool: 'cursor',
       toolName: 'Cursor',
-      status: rulesCount > 0 ? 'configured' : 'not-configured',
+      status: resolveToolStatus(rulesCount > 0 ? true : null, hasBinary),
       agents,
       configValid: rulesCount > 0 ? true : null,
       configPath: '.cursor/rules/',
@@ -357,6 +381,8 @@ export class StatusAdapter {
     return {
       tool: 'copilot',
       toolName: 'GitHub Copilot',
+      // Copilot has no standalone CLI binary on PATH, so 'configured' is the
+      // honest upper state for a valid config.
       status: agents.length > 0 ? 'configured' : 'not-configured',
       agents,
       configValid: agents.length > 0 ? true : null,
@@ -429,7 +455,7 @@ export class StatusAdapter {
     return {
       tool: 'aider',
       toolName: 'Aider',
-      status: agents.length > 0 ? 'configured' : 'not-configured',
+      status: resolveToolStatus(agents.length > 0 ? true : null, findExecutable(['aider']) !== null),
       agents,
       configValid: agents.length > 0 ? true : null,
       configPath: configPath || '.aider.conf.yml',

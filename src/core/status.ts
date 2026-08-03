@@ -1,3 +1,10 @@
+/**
+ * Tool-level status semantics:
+ *  - `active`         valid config + tool binary present on PATH
+ *  - `configured`     valid config, binary not detected
+ *  - `error`          config exists but failed to parse/validate
+ *  - `not-configured` no config file found
+ */
 export type ToolStatus = 'active' | 'configured' | 'not-configured' | 'error';
 
 export interface AgentStatus {
