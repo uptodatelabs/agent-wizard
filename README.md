@@ -3,8 +3,10 @@
 AI coding assistant configuration wizard. Set up your AI tools in minutes, not hours.
 
 [![npm version](https://img.shields.io/npm/v/agent-wizard.svg)](https://www.npmjs.com/package/agent-wizard)
-[![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![CI](https://github.com/uptodatelabs/agent-wizard/actions/workflows/ci.yml/badge.svg)](https://github.com/uptodatelabs/agent-wizard/actions/workflows/ci.yml)
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/uptodatelabs)
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-AgentWizard-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/uptodatelabs)
 
 ## Overview
 
@@ -408,11 +410,18 @@ Contributions are welcome! Please follow these steps:
 - Keep `npm run verify` green (lint + typecheck + test + build) before pushing
 - Update documentation as needed
 
-## License
+## Support & Donate
 
-This project is licensed under the Apache License 2.0 - see the [LICENSE](LICENSE) file for details.
+AgentWizard is **free and open source** (MIT). If it saves you time, consider
+supporting the project — every coffee helps keep it maintained:
 
-## Support
+[![Ko-fi](https://img.shields.io/badge/Ko--fi-FF5E5B?style=for-the-badge&logo=ko-fi&logoColor=white)](https://ko-fi.com/uptodatelabs)
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-AgentWizard-ea4aaa?style=for-the-badge&logo=githubsponsors&logoColor=white)](https://github.com/sponsors/uptodatelabs)
 
 - **Issues**: [GitHub Issues](https://github.com/uptodatelabs/agent-wizard/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/uptodatelabs/agent-wizard/discussions)
+- **More ways to support**: [docs/SUPPORT.md](docs/SUPPORT.md)
+
+## License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
