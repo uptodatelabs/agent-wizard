@@ -4,6 +4,7 @@ AI coding assistant configuration wizard. Set up your AI tools in minutes, not h
 
 [![npm version](https://img.shields.io/npm/v/agent-wizard.svg)](https://www.npmjs.com/package/agent-wizard)
 [![License: Apache-2.0](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](https://opensource.org/licenses/Apache-2.0)
+[![CI](https://github.com/uptodatelabs/agent-wizard/actions/workflows/ci.yml/badge.svg)](https://github.com/uptodatelabs/agent-wizard/actions/workflows/ci.yml)
 
 ## Overview
 
@@ -105,6 +106,8 @@ Opens an interactive dashboard to monitor all your AI assistants.
 | `agent-wizard profile export <name>` | Export profile to stdout |
 | `agent-wizard profile import` | Import profile from stdin |
 
+Profile names are validated before use: empty names, path separators (`/`, `\`), `.`/`..`, control characters, and leading/trailing whitespace are rejected. This keeps `profile delete`/`import` from ever touching anything outside the profiles directory.
+
 ### Agent Management
 
 | Command | Description |
@@ -200,12 +203,38 @@ preserved).
 | `agent-wizard status show <tool>` | Show detailed status for a specific tool |
 | `agent-wizard dashboard` | Launch interactive dashboard |
 
+**Status semantics** — status is derived from real checks, not file presence alone:
+
+| Status | Meaning |
+|--------|---------|
+| `active` | Config exists, is schema-valid, **and** the tool's CLI binary is on your PATH |
+| `configured` | Config exists and is valid (binary not detected) |
+| `error` | Config exists but failed to parse or failed schema validation |
+| `not-configured` | No config file found |
+
+> GitHub Copilot has no standalone CLI binary, so a valid Copilot config reports `configured`. `status show <tool>` also reports `configValid` (`Yes` / `No` / `N/A`) so you can tell "absent" from "broken".
+
 ### Sync
 
 | Command | Description |
 |---------|-------------|
 | `agent-wizard sync to-tools <profile>` | Merge profile settings into tool configurations |
+| `agent-wizard sync to-tools <profile> --dry-run` | Preview exactly what would be written (create / modify / unchanged) **without touching any file** |
 | `agent-wizard sync from-tools` | Import existing tool configurations into a new profile |
+
+Every write is preceded by an automatic timestamped backup (`<file>.bak-YYYYMMDD-HHMMSS`), and existing config files are merged — never replaced wholesale. Use `--dry-run` to inspect the change before applying:
+
+```bash
+# Preview first
+agent-wizard sync to-tools my-project --dry-run
+#   ＋ openclaw: ~/.openclaw/openclaw.json (will be created)
+#   ↻ claude-code: ~/.claude/settings.json (will be modified)
+
+# Then apply
+agent-wizard sync to-tools my-project
+```
+
+If any tool fails to sync, the command exits with a non-zero code and prints the reason per tool.
 
 ## Supported Tools
 
@@ -234,7 +263,7 @@ AgentWizard never destroys your existing tool configuration:
 
 ## `validate` behavior
 
-`agent-wizard validate` checks each detected tool's configuration for structural correctness (required fields, correct types) — not just whether the file can be parsed. Example checks: OpenClaw requires `agents.defaults.workspace`; Claude Code requires `permissions.allow`/`deny` to be arrays when present; Cursor rule files must have valid `---` frontmatter.
+`agent-wizard validate` checks each detected tool's configuration against a **zod schema** (required fields, correct types) — not just whether the file can be parsed. Example checks: OpenClaw requires `agents.defaults.workspace`; Claude Code requires `permissions.allow`/`deny` to be arrays when present; Cursor `.mdc` rule files and Copilot `.instructions.md` files must have valid frontmatter with correctly-typed fields. Unknown keys are ignored (tool configs legitimately gain new fields), so validation flags real breakage without false positives.
 
 ## Configuration Examples
 
@@ -261,7 +290,10 @@ agent-wizard profile show my-project
 # Import existing configurations
 agent-wizard sync from-tools
 
-# Merge profile settings into tools (preserves existing tool config)
+# Preview what would change (writes nothing)
+agent-wizard sync to-tools my-project --dry-run
+
+# Merge profile settings into tools (preserves existing tool config, creates backups)
 agent-wizard sync to-tools my-project
 ```
 
@@ -297,17 +329,22 @@ agent-wizard/
 │   │   ├── agent-wizard.ts
 │   │   ├── profile.ts
 │   │   ├── profile-manager.ts
-│   │   ├── sync.ts
+│   │   ├── sync.ts          # merge-based sync + --dry-run
+│   │   ├── backup.ts        # timestamped backups before writes
+│   │   ├── tool-check.ts    # PATH binary detection for status
+│   │   ├── tools.ts         # supported-tool registry
 │   │   ├── status.ts
-│   │   └── status-adapter.ts
+│   │   ├── status-adapter.ts
+│   │   ├── agent-editor.ts  # tool-agnostic agent editor port
+│   │   └── editors/         # per-tool editor implementations
+│   ├── schemas/             # zod schemas for tool config files
+│   │   └── tool-schemas.ts
 │   ├── dashboard/          # Ink dashboard
 │   │   ├── index.tsx
 │   │   └── components/
 │   ├── cli/                # CLI entry point
 │   │   └── index.ts
-│   └── __tests__/          # Tests
-│       ├── basic.test.ts
-│       └── integration.test.ts
+│   └── __tests__/          # Tests (unit + integration + CLI E2E)
 ├── dist/                   # Compiled output
 ├── package.json
 ├── tsconfig.json
@@ -341,8 +378,10 @@ npm test
 | `npm run dev` | Watch mode for development |
 | `npm test` | Run tests (vitest) |
 | `npm run test:run` | Run tests once |
+| `npm run test:coverage` | Run tests with coverage report |
 | `npm run typecheck` | Type checking (tsc --noEmit) |
 | `npm run lint` | Linting (ESLint 9 flat config) |
+| `npm run verify` | Full gate: lint + typecheck + test + build |
 
 ### Architecture
 
@@ -366,7 +405,7 @@ Contributions are welcome! Please follow these steps:
 ### Development Guidelines
 
 - Write tests for new features
-- Keep `npm run lint`, `npm run typecheck`, and `npm test` green
+- Keep `npm run verify` green (lint + typecheck + test + build) before pushing
 - Update documentation as needed
 
 ## License
