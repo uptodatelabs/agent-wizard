@@ -1,3 +1,4 @@
+import * as fs from 'fs/promises';
 import * as path from 'path';
 import JSON5 from 'json5';
 import { backupFile } from './backup';
@@ -9,6 +10,44 @@ import { CursorAdapter } from '../adapters/cursor';
 import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter, AiderConfig } from '../adapters/aider';
 
+export interface SyncOptions {
+  /** When true, compute the merged configuration and report what *would* be
+   *  written without touching the filesystem. No backup, no write. */
+  dryRun?: boolean;
+}
+
+export interface SyncFailure {
+  tool: string;
+  reason: string;
+}
+
+export interface SyncPreviewEntry {
+  tool: string;
+  path: string;
+  /** create = file does not exist yet, modify = existing file would change,
+   *  unchanged = merged output equals current content (nothing to write). */
+  action: 'create' | 'modify' | 'unchanged';
+}
+
+export interface SyncResult {
+  success: string[];
+  failed: SyncFailure[];
+  /** Populated when `dryRun` is true. */
+  preview: SyncPreviewEntry[];
+}
+
+const SUPPORTED_TOOLS = new Set(['openclaw', 'hermes', 'claude-code', 'cursor', 'copilot', 'aider']);
+
+interface WritePlan {
+  tool: string;
+  path: string;
+  existing: unknown;
+  merged: unknown;
+  options: SyncOptions;
+  /** Serialize the merged object to the file's text format. */
+  serialize: (value: unknown) => string;
+}
+
 export class ProfileSync {
   private openclawAdapter = new OpenClawAdapter();
   private hermesAdapter = new HermesAdapter();
@@ -17,49 +56,76 @@ export class ProfileSync {
   private copilotAdapter = new CopilotAdapter();
   private aiderAdapter = new AiderAdapter();
 
-  async syncProfileToTools(profile: Profile): Promise<{ success: string[]; failed: string[] }> {
+  async syncProfileToTools(profile: Profile, options: SyncOptions = {}): Promise<SyncResult> {
     const success: string[] = [];
-    const failed: string[] = [];
+    const failed: SyncFailure[] = [];
+    const preview: SyncPreviewEntry[] = [];
 
     for (const agent of profile.agents) {
       if (!agent.enabled) continue;
 
+      if (!SUPPORTED_TOOLS.has(agent.tool)) {
+        failed.push({ tool: agent.tool, reason: `Unsupported tool '${agent.tool}'` });
+        continue;
+      }
+
       try {
-        await this.syncAgentToTool(agent, profile);
-        success.push(agent.tool);
-      } catch (_error) {
-        failed.push(agent.tool);
+        const entry = await this.syncAgentToTool(agent, profile, options);
+        if (entry) {
+          preview.push(entry);
+          if (!options.dryRun && entry.action !== 'unchanged') {
+            success.push(agent.tool);
+          }
+        }
+      } catch (error) {
+        failed.push({
+          tool: agent.tool,
+          reason: error instanceof Error ? error.message : 'Unknown error',
+        });
       }
     }
 
-    return { success, failed };
+    return { success, failed, preview };
   }
 
-  private async syncAgentToTool(agent: AgentProfile, profile: Profile): Promise<void> {
+  private async syncAgentToTool(agent: AgentProfile, profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
     switch (agent.tool) {
       case 'openclaw':
-        await this.syncToOpenClaw(agent, profile);
-        break;
+        return this.syncToOpenClaw(agent, profile, options);
       case 'hermes':
-        await this.syncToHermes(agent, profile);
-        break;
+        return this.syncToHermes(agent, profile, options);
       case 'claude-code':
-        await this.syncToClaudeCode(agent, profile);
-        break;
+        return this.syncToClaudeCode(agent, profile, options);
       case 'cursor':
-        await this.syncToCursor(agent, profile);
-        break;
+        return this.syncToCursor(agent, profile, options);
       case 'copilot':
-        await this.syncToCopilot(agent, profile);
-        break;
+        return this.syncToCopilot(agent, profile, options);
       case 'aider':
-        await this.syncToAider(agent, profile);
-        break;
+        return this.syncToAider(agent, profile, options);
+      default:
+        throw new Error(`Unsupported tool '${agent.tool}'`);
     }
   }
 
-  private async syncToOpenClaw(agent: AgentProfile, profile: Profile): Promise<void> {
-    const fs = await import('fs/promises');
+  /** Core apply step: decide create/modify/unchanged, then (unless dry-run)
+   *  back up the existing file and write the merged config. */
+  private async applyWrite(plan: WritePlan): Promise<SyncPreviewEntry> {
+    const exists = await this.fileExists(plan.path);
+    const unchanged = exists && this.deepEqual(plan.existing, plan.merged);
+    const action: SyncPreviewEntry['action'] = !exists ? 'create' : unchanged ? 'unchanged' : 'modify';
+
+    if (plan.options.dryRun || action === 'unchanged') {
+      return { tool: plan.tool, path: plan.path, action };
+    }
+
+    await fs.mkdir(path.dirname(plan.path), { recursive: true });
+    await backupFile(plan.path);
+    await fs.writeFile(plan.path, plan.serialize(plan.merged));
+
+    return { tool: plan.tool, path: plan.path, action };
+  }
+
+  private async syncToOpenClaw(agent: AgentProfile, profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
     const os = await import('os');
     const configPath = path.join(os.homedir(), '.openclaw', 'openclaw.json');
     const existing = await this.readJson5<Partial<OpenClawConfig>>(configPath);
@@ -88,8 +154,10 @@ export class ProfileSync {
         ...existing.agents?.defaults,
         workspace: existing.agents?.defaults?.workspace || agent.settings.workspace || '~/.openclaw/workspace',
         model: {
-          primary: agent.settings.model || existing.agents?.defaults?.model?.primary || 'anthropic/claude-sonnet-4-6',
+          // Spread existing first so extra keys (e.g. fallbacks) are kept,
+          // then set primary so an updated model actually takes effect.
           ...existing.agents?.defaults?.model,
+          primary: agent.settings.model || existing.agents?.defaults?.model?.primary || 'anthropic/claude-sonnet-4-6',
         },
       },
     };
@@ -107,13 +175,17 @@ export class ProfileSync {
       mcp: existing.mcp,
     };
 
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await backupFile(configPath);
-    await fs.writeFile(configPath, JSON.stringify(merged, null, 2));
+    return this.applyWrite({
+      tool: 'openclaw',
+      path: configPath,
+      existing,
+      merged,
+      options,
+      serialize: (v) => JSON.stringify(v, null, 2),
+    });
   }
 
-  private async syncToHermes(agent: AgentProfile, _profile: Profile): Promise<void> {
-    const fs = await import('fs/promises');
+  private async syncToHermes(agent: AgentProfile, _profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
     const yaml = await import('yaml');
     const os = await import('os');
     const configPath = path.join(os.homedir(), '.hermes', 'config.yaml');
@@ -150,13 +222,17 @@ export class ProfileSync {
       },
     };
 
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await backupFile(configPath);
-    await fs.writeFile(configPath, yaml.stringify(merged));
+    return this.applyWrite({
+      tool: 'hermes',
+      path: configPath,
+      existing,
+      merged,
+      options,
+      serialize: (v) => yaml.stringify(v),
+    });
   }
 
-  private async syncToClaudeCode(agent: AgentProfile, profile: Profile): Promise<void> {
-    const fs = await import('fs/promises');
+  private async syncToClaudeCode(agent: AgentProfile, profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
     const os = await import('os');
     const configPath = path.join(os.homedir(), '.claude', 'settings.json');
     const existing = await this.readJson<Partial<ClaudeCodeSettings>>(configPath);
@@ -178,19 +254,22 @@ export class ProfileSync {
       companyAnnouncements: existing.companyAnnouncements,
     };
 
-    await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await backupFile(configPath);
-    await fs.writeFile(configPath, JSON.stringify(merged, null, 2));
+    return this.applyWrite({
+      tool: 'claude-code',
+      path: configPath,
+      existing,
+      merged,
+      options,
+      serialize: (v) => JSON.stringify(v, null, 2),
+    });
   }
 
-  private async syncToCursor(agent: AgentProfile, _profile: Profile): Promise<void> {
+  private async syncToCursor(agent: AgentProfile, _profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
     const rulesDir = path.join(process.cwd(), '.cursor', 'rules');
-    const fs = await import('fs/promises');
-    
-    await fs.mkdir(rulesDir, { recursive: true });
+    const filePath = path.join(rulesDir, 'agent-wizard.mdc');
 
     // Create main rule file
-    const ruleContent = `---
+    const content = `---
 description: "${agent.name} rules"
 globs: "**/*"
 alwaysApply: false
@@ -201,30 +280,48 @@ alwaysApply: false
 ${agent.settings.instructions || 'AgentWizard generated rules'}
 `;
 
-    await backupFile(path.join(rulesDir, 'agent-wizard.mdc'));
-    await fs.writeFile(path.join(rulesDir, 'agent-wizard.mdc'), ruleContent);
+    const exists = await this.fileExists(filePath);
+    const unchanged = exists && (await this.readText(filePath)) === content;
+    const action: SyncPreviewEntry['action'] = !exists ? 'create' : unchanged ? 'unchanged' : 'modify';
+
+    if (options.dryRun || action === 'unchanged') {
+      return { tool: 'cursor', path: filePath, action };
+    }
+
+    await fs.mkdir(rulesDir, { recursive: true });
+    await backupFile(filePath);
+    await fs.writeFile(filePath, content);
+
+    return { tool: 'cursor', path: filePath, action };
   }
 
-  private async syncToCopilot(agent: AgentProfile, _profile: Profile): Promise<void> {
+  private async syncToCopilot(agent: AgentProfile, _profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
     const instructionsDir = path.join(process.cwd(), '.github');
-    const fs = await import('fs/promises');
-    
-    await fs.mkdir(instructionsDir, { recursive: true });
+    const filePath = path.join(instructionsDir, 'copilot-instructions.md');
 
     // Create repository-wide instructions
-    const instructions = `# ${agent.name}
+    const content = `# ${agent.name}
 
 ${agent.settings.instructions || 'AgentWizard generated instructions'}
 `;
 
-    await backupFile(path.join(instructionsDir, 'copilot-instructions.md'));
-    await fs.writeFile(path.join(instructionsDir, 'copilot-instructions.md'), instructions);
+    const exists = await this.fileExists(filePath);
+    const unchanged = exists && (await this.readText(filePath)) === content;
+    const action: SyncPreviewEntry['action'] = !exists ? 'create' : unchanged ? 'unchanged' : 'modify';
+
+    if (options.dryRun || action === 'unchanged') {
+      return { tool: 'copilot', path: filePath, action };
+    }
+
+    await fs.mkdir(instructionsDir, { recursive: true });
+    await backupFile(filePath);
+    await fs.writeFile(filePath, content);
+
+    return { tool: 'copilot', path: filePath, action };
   }
 
-  private async syncToAider(agent: AgentProfile, _profile: Profile): Promise<void> {
-    const fs = await import('fs/promises');
+  private async syncToAider(agent: AgentProfile, _profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
     const yaml = await import('yaml');
-    
     const configPath = path.join(process.cwd(), '.aider.conf.yml');
     const existing = await this.readYaml<Partial<AiderConfig>>(configPath);
 
@@ -239,12 +336,38 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
     if (merged.lint === undefined) merged.lint = true;
     if (merged['auto-lint'] === undefined) merged['auto-lint'] = true;
 
-    await backupFile(configPath);
-    await fs.writeFile(configPath, yaml.stringify(merged));
+    return this.applyWrite({
+      tool: 'aider',
+      path: configPath,
+      existing,
+      merged,
+      options,
+      serialize: (v) => yaml.stringify(v),
+    });
+  }
+
+  private async fileExists(filePath: string): Promise<boolean> {
+    try {
+      await fs.access(filePath);
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  private async readText(filePath: string): Promise<string> {
+    try {
+      return await fs.readFile(filePath, 'utf-8');
+    } catch {
+      return '';
+    }
+  }
+
+  private deepEqual(a: unknown, b: unknown): boolean {
+    return JSON.stringify(a) === JSON.stringify(b);
   }
 
   private async readJson5<T>(configPath: string): Promise<T> {
-    const fs = await import('fs/promises');
     try {
       const content = await fs.readFile(configPath, 'utf-8');
       return JSON5.parse(content) as T;
@@ -254,7 +377,6 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
   }
 
   private async readJson<T>(configPath: string): Promise<T> {
-    const fs = await import('fs/promises');
     try {
       const content = await fs.readFile(configPath, 'utf-8');
       return JSON.parse(content) as T;
@@ -264,7 +386,6 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
   }
 
   private async readYaml<T>(configPath: string): Promise<T> {
-    const fs = await import('fs/promises');
     const yaml = await import('yaml');
     try {
       const content = await fs.readFile(configPath, 'utf-8');
@@ -298,7 +419,7 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
       const detected = await adapter.detect();
       if (detected) {
         const agentConfig = await adapter.read();
-        
+
         if (agentConfig.agents.length > 0) {
           for (const agent of agentConfig.agents) {
             // Avoid id collision when a single tool exposes multiple agents

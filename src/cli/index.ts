@@ -522,9 +522,11 @@ const syncCmd = program
 syncCmd
   .command('to-tools <profile>')
   .description('Sync profile settings to tool configurations')
-  .action(async (profileName: string) => {
-    console.log(chalk.bold.cyan(`\n🔄 Syncing profile '${profileName}' to tools...\n`));
-    
+  .option('-n, --dry-run', 'Preview changes without writing any files')
+  .action(async (profileName: string, options: { dryRun?: boolean }) => {
+    const dryRun = options.dryRun ?? false;
+    console.log(chalk.bold.cyan(`\n🔄 ${dryRun ? 'Previewing sync' : 'Syncing'} profile '${profileName}' to tools...\n`));
+
     try {
       const profile = await profileManager.readProfile(profileName);
       if (!profile) {
@@ -532,20 +534,41 @@ syncCmd
         process.exit(1);
       }
 
-      const { success, failed } = await profileSync.syncProfileToTools(profile);
+      const result = await profileSync.syncProfileToTools(profile, { dryRun });
 
-      if (success.length > 0) {
-        console.log(chalk.green('Synced to:'));
-        for (const tool of success) {
-          console.log(`  ${chalk.green('✓')} ${tool}`);
+      if (dryRun) {
+        if (result.preview.length === 0) {
+          console.log(chalk.gray('No enabled agents to sync.'));
+        }
+        for (const entry of result.preview) {
+          const icon =
+            entry.action === 'create' ? chalk.green('＋') :
+            entry.action === 'modify' ? chalk.yellow('↻') :
+            chalk.gray('=');
+          const label =
+            entry.action === 'create' ? 'will be created' :
+            entry.action === 'modify' ? 'will be modified' :
+            'unchanged';
+          console.log(`  ${icon} ${chalk.bold(entry.tool)}: ${chalk.gray(entry.path)} (${label})`);
+        }
+      } else {
+        if (result.success.length > 0) {
+          console.log(chalk.green('Synced to:'));
+          for (const tool of result.success) {
+            console.log(`  ${chalk.green('✓')} ${tool}`);
+          }
         }
       }
 
-      if (failed.length > 0) {
+      if (result.failed.length > 0) {
         console.log(chalk.red('\nFailed to sync:'));
-        for (const tool of failed) {
-          console.log(`  ${chalk.red('✗')} ${tool}`);
+        for (const f of result.failed) {
+          console.log(`  ${chalk.red('✗')} ${f.tool}: ${chalk.gray(f.reason)}`);
         }
+      }
+
+      if (!dryRun && result.failed.length === 0 && result.success.length === 0) {
+        console.log(chalk.gray('No enabled agents to sync.'));
       }
 
       console.log('');
