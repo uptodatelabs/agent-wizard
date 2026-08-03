@@ -219,10 +219,31 @@ describe('AgentWizard facade', () => {
     expect(info).toHaveProperty('type');
   });
 
-  it('validate returns true when no config set', async () => {
+  it('validate returns false when no config set', async () => {
     const aw = new AgentWizard();
     await aw.detect();
     expect(await aw.validate()).toBe(false);
+  });
+
+  it('getStatus returns dashboard data for all tools', async () => {
+    const aw = new AgentWizard();
+    const data = await aw.getStatus();
+    expect(data.toolStatuses).toHaveLength(6);
+    expect(typeof data.totalAgents).toBe('number');
+  });
+
+  it('writeConfig round-trips a config through a tool adapter', async () => {
+    const aw = new AgentWizard();
+    await aw.writeConfig({
+      projectInfo: { name: 't', type: 'cli', frameworks: [], languages: [] },
+      selectedTools: ['openclaw'],
+      config: makeAgentConfig(),
+    } as Parameters<typeof aw.writeConfig>[0]);
+
+    const configPath = path.join(homeDir, '.openclaw', 'openclaw.json');
+    // OpenClaw writes JSON5 (unquoted keys are valid JSON5)
+    const written = JSON5.parse(await fs.readFile(configPath, 'utf-8'));
+    expect(written.agents.entries.openclaw.identity.name).toBe('OC');
   });
 });
 

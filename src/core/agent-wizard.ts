@@ -76,4 +76,16 @@ export class AgentWizard {
   getConfig(): AgentConfig | null {
     return this.config;
   }
+
+  /** Read-only status across all supported tools (see StatusAdapter). */
+  async getStatus(): Promise<import('./status').DashboardData> {
+    const { StatusAdapter } = await import('./status-adapter.js');
+    return new StatusAdapter().getAllStatuses();
+  }
+
+  /** List saved profiles (read-only convenience over ProfileManager). */
+  async listProfiles(): Promise<import('./profile').Profile[]> {
+    const { ProfileManagerImpl } = await import('./profile-manager.js');
+    return new ProfileManagerImpl().listProfiles();
+  }
 }
