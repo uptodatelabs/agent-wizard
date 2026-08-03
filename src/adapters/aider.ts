@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import { aiderConfigSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface AiderConfig {
   model?: string;
@@ -159,17 +160,13 @@ export class AiderAdapter {
   }
 
   static validateStructure(config: Partial<AiderConfig>): { valid: boolean; errors: string[] } {
-    const errors: string[] = [];
     if (!config || typeof config !== 'object') {
       return { valid: false, errors: ['Config is not an object'] };
     }
     if (Object.keys(config).length === 0) {
       return { valid: false, errors: ['No Aider configuration found'] };
     }
-    if (config['edit-format'] && typeof config['edit-format'] !== 'string') {
-      errors.push('"edit-format" must be a string');
-    }
-    return { valid: errors.length === 0, errors };
+    return validateWithSchema(aiderConfigSchema, config);
   }
 
   private toAgentConfig(aiderConfig: AiderConfig): AgentConfig {

@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import { copilotPathInstructionSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface CopilotInstructions {
   repositoryWide: string;
@@ -153,6 +154,34 @@ export class CopilotAdapter {
       if (!hasMain && pathCount === 0) {
         return { valid: false, errors: ['No Copilot instructions found (.github/copilot-instructions.md or .github/instructions/*.instructions.md)'] };
       }
+
+      // Validate path-specific instruction frontmatter (applyTo/excludeAgent types).
+      const errors: string[] = [];
+      try {
+        const files = await fs.readdir(instructionsDir);
+        for (const file of files) {
+          if (!file.endsWith('.instructions.md')) continue;
+          const content = await fs.readFile(path.join(instructionsDir, file), 'utf-8');
+          const parsed = this.parsePathInstruction(file, content);
+          if (!parsed) {
+            errors.push(`${file}: invalid frontmatter (expected --- ... --- block)`);
+            continue;
+          }
+          const frontmatter = this.parseFrontmatter(content);
+          if (frontmatter) {
+            const check = validateWithSchema(copilotPathInstructionSchema, frontmatter);
+            for (const err of check.errors) {
+              errors.push(`${file}: ${err}`);
+            }
+          }
+        }
+      } catch {
+        // No instructions directory — nothing path-specific to validate
+      }
+
+      if (errors.length > 0) {
+        return { valid: false, errors };
+      }
       return { valid: true, errors: [] };
     } catch (error) {
       return {
@@ -160,6 +189,25 @@ export class CopilotAdapter {
         errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
+  }
+
+  /** Extract the raw frontmatter block as key/value pairs for schema checks. */
+  private parseFrontmatter(content: string): Record<string, unknown> | null {
+    const match = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!match) {
+      return null;
+    }
+    const frontmatter: Record<string, unknown> = {};
+    for (const line of match[1].split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx < 0) continue;
+      const key = line.slice(0, idx).trim();
+      if (!key) continue;
+      let raw = line.slice(idx + 1).trim();
+      raw = raw.replace(/^"|"$/g, '');
+      frontmatter[key] = raw;
+    }
+    return frontmatter;
   }
 
   private parsePathInstruction(fileName: string, content: string): CopilotPathInstruction | null {

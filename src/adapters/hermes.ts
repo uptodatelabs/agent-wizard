@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import { hermesConfigSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface HermesConfig {
   model?: {
@@ -123,20 +124,7 @@ export class HermesAdapter {
   }
 
   static validateStructure(config: Partial<HermesConfig>): { valid: boolean; errors: string[] } {
-    const errors: string[] = [];
-    if (!config || typeof config !== 'object') {
-      return { valid: false, errors: ['Config is not an object'] };
-    }
-    if (config.model && typeof config.model !== 'object') {
-      errors.push('"model" must be an object');
-    }
-    if (config.agent && typeof config.agent !== 'object') {
-      errors.push('"agent" must be an object');
-    }
-    if (config.agent?.personalities && typeof config.agent.personalities !== 'object') {
-      errors.push('"agent.personalities" must be an object map');
-    }
-    return { valid: errors.length === 0, errors };
+    return validateWithSchema(hermesConfigSchema, config);
   }
 
   private toAgentConfig(hermesConfig: HermesConfig): AgentConfig {

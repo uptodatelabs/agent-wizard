@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import { cursorMdcFrontmatterSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface CursorRule {
   description: string;
@@ -95,6 +96,15 @@ export class CursorAdapter {
         const rule = this.parseMdcFile(content);
         if (!rule) {
           errors.push(`${file}: invalid frontmatter (expected --- ... --- block)`);
+          continue;
+        }
+        // Validate the frontmatter fields (description/globs/alwaysApply types).
+        const frontmatter = this.parseFrontmatter(content);
+        if (frontmatter) {
+          const check = validateWithSchema(cursorMdcFrontmatterSchema, frontmatter);
+          for (const err of check.errors) {
+            errors.push(`${file}: ${err}`);
+          }
         }
       }
       return { valid: errors.length === 0, errors };
@@ -104,6 +114,31 @@ export class CursorAdapter {
         errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
+  }
+
+  /** Extract the raw frontmatter block as key/value pairs for schema checks. */
+  private parseFrontmatter(content: string): Record<string, unknown> | null {
+    const match = content.match(/^---\n([\s\S]*?)\n---/);
+    if (!match) {
+      return null;
+    }
+    const frontmatter: Record<string, unknown> = {};
+    for (const line of match[1].split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx < 0) continue;
+      const key = line.slice(0, idx).trim();
+      if (!key) continue;
+      let raw = line.slice(idx + 1).trim();
+      raw = raw.replace(/^"|"$/g, '');
+      if (key === 'alwaysApply') {
+        frontmatter.alwaysApply = raw === 'true';
+      } else if (key === 'globs') {
+        frontmatter.globs = raw.includes(',') ? raw.split(',').map((s) => s.trim()) : raw;
+      } else {
+        frontmatter[key] = raw;
+      }
+    }
+    return frontmatter;
   }
 
   private parseMdcFile(content: string): CursorRule | null {

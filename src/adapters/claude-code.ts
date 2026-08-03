@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import { claudeCodeSettingsSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface ClaudeCodeSettings {
   $schema?: string;
@@ -153,23 +154,7 @@ export class ClaudeCodeAdapter {
   }
 
   static validateStructure(config: Partial<ClaudeCodeSettings>): { valid: boolean; errors: string[] } {
-    const errors: string[] = [];
-    if (!config || typeof config !== 'object') {
-      return { valid: false, errors: ['Config is not an object'] };
-    }
-    if (config.permissions) {
-      const { allow, deny } = config.permissions;
-      if (allow !== undefined && !Array.isArray(allow)) {
-        errors.push('"permissions.allow" must be an array');
-      }
-      if (deny !== undefined && !Array.isArray(deny)) {
-        errors.push('"permissions.deny" must be an array');
-      }
-    }
-    if (config.hooks && typeof config.hooks !== 'object') {
-      errors.push('"hooks" must be an object');
-    }
-    return { valid: errors.length === 0, errors };
+    return validateWithSchema(claudeCodeSettingsSchema, config);
   }
 
   private toAgentConfig(settings: ClaudeCodeSettings): AgentConfig {
