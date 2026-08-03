@@ -37,3 +37,4 @@ coverage/
 # Cache
 .cache/
 .nyc_output/
+*.tgz
