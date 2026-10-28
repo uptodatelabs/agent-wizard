@@ -54,9 +54,14 @@ afterAll(async () => {
 
 describe('agent-wizard CLI (end-to-end)', () => {
   it('reports the version from package.json', async () => {
+    // Read the expected version from package.json instead of pinning a literal:
+    // a hardcoded value breaks every release bump and blocks `npm publish`.
+    const pkg = JSON.parse(await fs.readFile(path.join(repoRoot, 'package.json'), 'utf8')) as {
+      version: string;
+    };
     const r = await runCli(['--version'], { home: homeDir });
     expect(r.code).toBe(0);
-    expect(r.stdout.trim()).toBe('0.1.0');
+    expect(r.stdout.trim()).toBe(pkg.version);
   });
 
   it('detects a project', async () => {
