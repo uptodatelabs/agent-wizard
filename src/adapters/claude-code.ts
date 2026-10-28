@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import { backupFile } from '../core/backup';
 import { claudeCodeSettingsSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface ClaudeCodeSettings {
@@ -112,6 +113,8 @@ export class ClaudeCodeAdapter {
     const settings = this.fromAgentConfig(config, existing);
     
     await fs.mkdir(path.dirname(configPath), { recursive: true });
+    // Never overwrite an existing config without a restore point.
+    await backupFile(configPath);
     await fs.writeFile(configPath, JSON.stringify(settings, null, 2));
   }
 

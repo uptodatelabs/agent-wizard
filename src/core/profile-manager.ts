@@ -4,7 +4,9 @@ import * as os from 'os';
 import * as yaml from 'yaml';
 import { backupFile } from './backup';
 import { Profile, AgentProfile } from './profile';
-import { isSupportedTool } from './tools';
+import { isSupportedTool, SUPPORTED_TOOLS } from './tools';
+import { DEFAULT_MODELS } from './models';
+import { parseProfile } from '../schemas/profile-schema';
 
 /** Validate a profile name used as a directory name. Returns an error message
  *  or null when valid. Guards against path traversal (`..`, separators) and
@@ -101,7 +103,11 @@ export class ProfileManagerImpl {
     try {
       const profilePath = path.join(dir, 'profile.yaml');
       const content = await fs.readFile(profilePath, 'utf-8');
-      return yaml.parse(content) as Profile;
+      // Runtime-validate instead of casting: a hand-edited or truncated
+      // profile used to make `profile.agents.length` throw a TypeError and
+      // take down every CLI command.
+      const { profile } = parseProfile(yaml.parse(content));
+      return profile;
     } catch {
       return null;
     }
@@ -202,7 +208,10 @@ export class ProfileManagerImpl {
     
     try {
       const defaultPath = path.join(this.globalDir, this.defaultProfileFile);
-      defaultName = await fs.readFile(defaultPath, 'utf-8');
+      // Trim: a trailing newline in a hand-edited file used to produce a
+      // 'Profile not found' error for a name that exists.
+      const raw = (await fs.readFile(defaultPath, 'utf-8')).trim();
+      if (raw.length > 0) defaultName = raw;
     } catch {
       // Use default
     }
@@ -254,28 +263,33 @@ export class ProfileManagerImpl {
   }
 
   async importProfile(data: string): Promise<Profile> {
-    const profile = yaml.parse(data) as Profile;
-    
-    // Validate
-    if (!profile.name) {
-      throw new Error('Profile must have a name');
+    const parsed = yaml.parse(data) as unknown;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('Profile data must be a YAML mapping');
+    }
+
+    const { profile, result } = parseProfile(parsed);
+    if (!profile) {
+      throw new Error(`Invalid profile: ${result.errors.join('; ')}`);
     }
 
     // Update timestamp
     profile.updated = new Date().toISOString();
-    
+
     await this.writeProfile(profile);
     return profile;
   }
 
   async getAgentDefaultSettings(tool: string): Promise<Record<string, any>> {
+    // Model names come from `models.ts` so the wizard's first choice and the
+    // profile default can never drift apart (they previously differed).
     const defaults: Record<string, any> = {
       openclaw: {
-        model: 'anthropic/claude-sonnet-4-6',
+        model: DEFAULT_MODELS.openclaw,
         workspace: '~/.openclaw/workspace',
       },
       hermes: {
-        model: 'anthropic/claude-opus-4.6',
+        model: DEFAULT_MODELS.hermes,
         reasoning_effort: 'medium',
         terminal: {
           backend: 'local',
@@ -283,12 +297,12 @@ export class ProfileManagerImpl {
         },
       },
       'claude-code': {
-        model: 'claude-sonnet-4-20250514',
+        model: DEFAULT_MODELS['claude-code'],
       },
       cursor: {},
       copilot: {},
       aider: {
-        model: 'sonnet',
+        model: DEFAULT_MODELS.aider,
         architect: false,
       },
     };
@@ -296,16 +310,47 @@ export class ProfileManagerImpl {
     return defaults[tool] || {};
   }
 
+  /** Turn a display name into an id-safe slug. */
+  private slugifyName(value: string): string {
+    return value
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+  }
+
+  /**
+   * Add an agent for `tool`.
+   *
+   * The id defaults to the tool name (so existing profiles/tests keep their
+   * ids), but a *second* agent for the same tool now gets a unique id instead
+   * of being rejected. Before this, "one fast Claude agent + one architect
+   * Claude agent" was impossible from the CLI even though the editor port
+   * already accepted arbitrary ids.
+   */
   async createAgentProfile(profileName: string, tool: string, name?: string): Promise<AgentProfile> {
     if (!isSupportedTool(tool)) {
       throw new Error(
-        `Unsupported tool '${tool}'. Supported tools: ${['openclaw', 'hermes', 'claude-code', 'cursor', 'copilot', 'aider'].join(', ')}`,
+        `Unsupported tool '${tool}'. Supported tools: ${SUPPORTED_TOOLS.join(', ')}`,
       );
     }
+
+    const profile = await this.readProfile(profileName);
+    if (!profile) {
+      throw new Error(`Profile '${profileName}' not found`);
+    }
+
+    const slug = name ? this.slugifyName(name) : '';
+    const baseId = slug ? `${tool}-${slug}` : tool;
+    let id = baseId;
+    let suffix = 2;
+    while (profile.agents.some((a) => a.id === id)) {
+      id = `${baseId}-${suffix}`;
+      suffix += 1;
+    }
+
     const defaults = await this.getAgentDefaultSettings(tool);
-    
     const agent: AgentProfile = {
-      id: tool,
+      id,
       name: name || `${tool} Agent`,
       tool,
       enabled: true,

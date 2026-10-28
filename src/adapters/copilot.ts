@@ -1,5 +1,6 @@
 import { AgentConfig, Agent } from '../core/types';
 import { copilotPathInstructionSchema, validateWithSchema } from '../schemas/tool-schemas';
+import { backupFile } from '../core/backup';
 
 export interface CopilotInstructions {
   repositoryWide: string;
@@ -97,6 +98,8 @@ export class CopilotAdapter {
     const instructionsPath = path.join(process.cwd(), '.github', 'copilot-instructions.md');
     await fs.mkdir(path.dirname(instructionsPath), { recursive: true });
     const merged = await this.mergeInstructions(instructionsPath, copilotConfig.instructions);
+    // Never overwrite existing instructions without a restore point.
+    await backupFile(instructionsPath);
     await fs.writeFile(instructionsPath, merged);
 
     // Write path-specific instructions
@@ -108,6 +111,7 @@ export class CopilotAdapter {
         const fileName = `${instruction.name}.instructions.md`;
         const filePath = path.join(instructionsDir, fileName);
         const content = this.toPathInstructionFile(instruction);
+        await backupFile(filePath);
         await fs.writeFile(filePath, content);
       }
     }
@@ -325,6 +329,7 @@ ${instruction.content}
     
     const instructionsPath = path.join(process.cwd(), '.github', 'copilot-instructions.md');
     await fs.mkdir(path.dirname(instructionsPath), { recursive: true });
+    await backupFile(instructionsPath);
     await fs.writeFile(instructionsPath, content);
   }
 
@@ -365,6 +370,7 @@ ${instruction.content}
     const fileName = `${name}.instructions.md`;
     const filePath = path.join(instructionsDir, fileName);
     const content = this.toPathInstructionFile(instruction);
+    await backupFile(filePath);
     await fs.writeFile(filePath, content);
   }
 

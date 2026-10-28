@@ -6,6 +6,10 @@ export interface AgentWizardResult {
   projectInfo: ProjectInfo;
   selectedTools: string[];
   config: AgentConfig;
+  /** true when the user declined the final confirmation. `writeConfig()` is a
+   *  no-op in that case (the wizard used to call `process.exit(0)` instead,
+   *  which killed the host process of library consumers). */
+  cancelled?: boolean;
 }
 
 /**
@@ -44,22 +48,10 @@ export class AgentWizard {
     if (!this.config) {
       return false;
     }
-    // Reuse the per-adapter validators via the wizard's adapters.
-    const { OpenClawAdapter } = await import('../adapters/openclaw.js');
-    const { HermesAdapter } = await import('../adapters/hermes.js');
-    const { ClaudeCodeAdapter } = await import('../adapters/claude-code.js');
-    const { CursorAdapter } = await import('../adapters/cursor.js');
-    const { CopilotAdapter } = await import('../adapters/copilot.js');
-    const { AiderAdapter } = await import('../adapters/aider.js');
-
-    const adapters = [
-      new OpenClawAdapter(),
-      new HermesAdapter(),
-      new ClaudeCodeAdapter(),
-      new CursorAdapter(),
-      new CopilotAdapter(),
-      new AiderAdapter(),
-    ];
+    // Single adapter registry (previously six hard-coded constructors here,
+    // duplicated in cli/index.ts and status-adapter.ts).
+    const { getAllAdapters } = await import('../adapters/index.js');
+    const adapters = getAllAdapters().map((entry) => entry.adapter);
 
     for (const adapter of adapters) {
       const detected = await adapter.detect();

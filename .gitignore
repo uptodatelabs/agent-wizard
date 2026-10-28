@@ -38,3 +38,10 @@ coverage/
 .cache/
 .nyc_output/
 *.tgz
+
+# Config restore points created by backupFile()
+*.bak-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]
+*.bak-[0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]-[0-9][0-9][0-9][0-9][0-9][0-9]-[0-9]*
+
+# Tool working backups
+.multicode-backups/

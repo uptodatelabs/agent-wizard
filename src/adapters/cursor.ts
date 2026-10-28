@@ -1,5 +1,6 @@
 import { AgentConfig, Agent } from '../core/types';
 import { cursorMdcFrontmatterSchema, validateWithSchema } from '../schemas/tool-schemas';
+import { backupFile } from '../core/backup';
 
 export interface CursorRule {
   description: string;
@@ -71,6 +72,8 @@ export class CursorAdapter {
       const fileName = `agent-wizard-${i + 1}.mdc`;
       const filePath = path.join(rulesDir, fileName);
       const content = this.toMdcFile(rule);
+      // Never overwrite an existing rule without a restore point.
+      await backupFile(filePath);
       await fs.writeFile(filePath, content);
     }
   }
@@ -114,6 +117,14 @@ export class CursorAdapter {
         errors: [error instanceof Error ? error.message : 'Unknown error'],
       };
     }
+  }
+
+  /**
+   * Parse a single `.mdc` file. Exposed so status reporting reuses this parser
+   * instead of keeping its own copy of the frontmatter regex.
+   */
+  parseRule(content: string): CursorRule | null {
+    return this.parseMdcFile(content);
   }
 
   /** Extract the raw frontmatter block as key/value pairs for schema checks. */
@@ -277,6 +288,7 @@ ${rule.content}
     const fileName = `${name}.mdc`;
     const filePath = path.join(rulesDir, fileName);
     const content = this.toMdcFile(rule);
+    await backupFile(filePath);
     await fs.writeFile(filePath, content);
   }
 

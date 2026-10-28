@@ -33,6 +33,8 @@ export interface SyncPreviewEntry {
 export interface SyncResult {
   success: string[];
   failed: SyncFailure[];
+  /** Tools whose config already matched the profile (nothing written). */
+  unchanged: string[];
   /** Populated when `dryRun` is true. */
   preview: SyncPreviewEntry[];
 }
@@ -47,6 +49,47 @@ interface WritePlan {
   serialize: (value: unknown) => string;
 }
 
+/** Make an agent id safe to use as a file name / marker. */
+function sanitizeId(id: string): string {
+  const cleaned = id
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return cleaned || 'agent';
+}
+
+/** Recursively compare two values ignoring object key order. */
+function stableEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a === null || b === null) return a === b;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b)) return false;
+    if (a.length !== b.length) return false;
+    return a.every((value, index) => stableEqual(value, b[index]));
+  }
+  if (typeof a === 'object' && typeof b === 'object') {
+    const aObj = a as Record<string, unknown>;
+    const bObj = b as Record<string, unknown>;
+    // Ignore keys whose value is `undefined`: JSON serialization drops them, so
+    // `{ a: 1, channels: undefined }` and `{ a: 1 }` produce the same file.
+    // Counting them made an identical config report `modify` on every run.
+    const presentKeys = (obj: Record<string, unknown>): string[] =>
+      Object.keys(obj)
+        .filter((key) => obj[key] !== undefined)
+        .sort();
+    const aKeys = presentKeys(aObj);
+    const bKeys = presentKeys(bObj);
+    if (aKeys.length !== bKeys.length) return false;
+    for (let i = 0; i < aKeys.length; i++) {
+      if (aKeys[i] !== bKeys[i]) return false;
+      if (!stableEqual(aObj[aKeys[i]], bObj[bKeys[i]])) return false;
+    }
+    return true;
+  }
+  return false;
+}
+
 export class ProfileSync {
   private openclawAdapter = new OpenClawAdapter();
   private hermesAdapter = new HermesAdapter();
@@ -58,6 +101,7 @@ export class ProfileSync {
   async syncProfileToTools(profile: Profile, options: SyncOptions = {}): Promise<SyncResult> {
     const success: string[] = [];
     const failed: SyncFailure[] = [];
+    const unchanged: string[] = [];
     const preview: SyncPreviewEntry[] = [];
 
     for (const agent of profile.agents) {
@@ -72,7 +116,9 @@ export class ProfileSync {
         const entry = await this.syncAgentToTool(agent, profile, options);
         if (entry) {
           preview.push(entry);
-          if (!options.dryRun && entry.action !== 'unchanged') {
+          if (entry.action === 'unchanged') {
+            unchanged.push(agent.tool);
+          } else if (!options.dryRun) {
             success.push(agent.tool);
           }
         }
@@ -84,7 +130,7 @@ export class ProfileSync {
       }
     }
 
-    return { success, failed, preview };
+    return { success, failed, unchanged, preview };
   }
 
   private async syncAgentToTool(agent: AgentProfile, profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
@@ -107,7 +153,11 @@ export class ProfileSync {
   }
 
   /** Core apply step: decide create/modify/unchanged, then (unless dry-run)
-   *  back up the existing file and write the merged config. */
+   *  back up the existing file and write the merged config.
+   *
+   *  `backupFile()` throws when an existing file cannot be backed up, and the
+   *  error propagates to `syncProfileToTools()` as a `SyncFailure` — we never
+   *  overwrite a user config without a restore point. */
   private async applyWrite(plan: WritePlan): Promise<SyncPreviewEntry> {
     const exists = await this.fileExists(plan.path);
     const unchanged = exists && this.deepEqual(plan.existing, plan.merged);
@@ -180,6 +230,10 @@ export class ProfileSync {
       existing,
       merged,
       options,
+      // Deliberately strict JSON here (the adapter writes JSON5 style): strict
+      // JSON is a valid subset of JSON5, so OpenClaw reads it fine, and staying
+      // strict keeps `sync` output parseable by plain `JSON.parse`. Both paths
+      // preserve every existing key — only the quoting style differs.
       serialize: (v) => JSON.stringify(v, null, 2),
     });
   }
@@ -263,12 +317,16 @@ export class ProfileSync {
     });
   }
 
-  private async syncToCursor(agent: AgentProfile, _profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
+  private cursorRulePath(agent: AgentProfile): { rulesDir: string; filePath: string } {
     const rulesDir = path.join(process.cwd(), '.cursor', 'rules');
-    const filePath = path.join(rulesDir, 'agent-wizard.mdc');
+    // One file per agent: two Cursor agents in a profile must not overwrite
+    // each other (previously a single hard-coded `agent-wizard.mdc` did).
+    const filePath = path.join(rulesDir, `agent-wizard-${sanitizeId(agent.id)}.mdc`);
+    return { rulesDir, filePath };
+  }
 
-    // Create main rule file
-    const content = `---
+  private cursorRuleContent(agent: AgentProfile): string {
+    return `---
 description: "${agent.name} rules"
 globs: "**/*"
 alwaysApply: false
@@ -278,6 +336,11 @@ alwaysApply: false
 
 ${agent.settings.instructions || 'AgentWizard generated rules'}
 `;
+  }
+
+  private async syncToCursor(agent: AgentProfile, _profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
+    const { rulesDir, filePath } = this.cursorRulePath(agent);
+    const content = this.cursorRuleContent(agent);
 
     const exists = await this.fileExists(filePath);
     const unchanged = exists && (await this.readText(filePath)) === content;
@@ -294,18 +357,41 @@ ${agent.settings.instructions || 'AgentWizard generated rules'}
     return { tool: 'cursor', path: filePath, action };
   }
 
+  /**
+   * Insert or replace this agent's managed section in a Markdown file.
+   * Each agent owns `<!-- agent-wizard:<id> --> ... <!-- /agent-wizard:<id> -->`
+   * so multiple Copilot agents accumulate instead of overwriting each other,
+   * and any user-authored content outside the markers is preserved.
+   */
+  private upsertManagedSection(existing: string, agent: AgentProfile): string {
+    const id = sanitizeId(agent.id);
+    const begin = `<!-- agent-wizard:${id} -->`;
+    const end = `<!-- /agent-wizard:${id} -->`;
+    const body = agent.settings.instructions || 'AgentWizard generated instructions';
+    const section = `${begin}\n## ${agent.name}\n\n${body}\n${end}`;
+
+    const beginIdx = existing.indexOf(begin);
+    const endIdx = existing.indexOf(end);
+    if (beginIdx >= 0 && endIdx > beginIdx) {
+      return existing.slice(0, beginIdx) + section + existing.slice(endIdx + end.length);
+    }
+
+    const trimmed = existing.replace(/\s+$/, '');
+    if (trimmed.length === 0) {
+      return `${section}\n`;
+    }
+    return `${trimmed}\n\n${section}\n`;
+  }
+
   private async syncToCopilot(agent: AgentProfile, _profile: Profile, options: SyncOptions): Promise<SyncPreviewEntry> {
     const instructionsDir = path.join(process.cwd(), '.github');
     const filePath = path.join(instructionsDir, 'copilot-instructions.md');
 
-    // Create repository-wide instructions
-    const content = `# ${agent.name}
-
-${agent.settings.instructions || 'AgentWizard generated instructions'}
-`;
+    const existing = await this.readText(filePath);
+    const content = this.upsertManagedSection(existing, agent);
 
     const exists = await this.fileExists(filePath);
-    const unchanged = exists && (await this.readText(filePath)) === content;
+    const unchanged = exists && existing === content;
     const action: SyncPreviewEntry['action'] = !exists ? 'create' : unchanged ? 'unchanged' : 'modify';
 
     if (options.dryRun || action === 'unchanged') {
@@ -327,8 +413,9 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
     const merged: AiderConfig = {
       ...existing,
       model: agent.settings.model || existing.model || 'sonnet',
-      architect: agent.settings.architect || existing.architect || false,
+      architect: agent.settings.architect ?? existing.architect ?? false,
     };
+    if (agent.settings.editorModel !== undefined) merged['editor-model'] = agent.settings.editorModel;
     if (merged['auto-commits'] === undefined) merged['auto-commits'] = true;
     if (merged['attribute-co-authored-by'] === undefined) merged['attribute-co-authored-by'] = true;
     if (merged.git === undefined) merged.git = true;
@@ -362,8 +449,10 @@ ${agent.settings.instructions || 'AgentWizard generated instructions'}
     }
   }
 
+  /** Deep equality that ignores object key ordering (was JSON.stringify,
+   *  which reported spurious `modify` for identical configs). */
   private deepEqual(a: unknown, b: unknown): boolean {
-    return JSON.stringify(a) === JSON.stringify(b);
+    return stableEqual(a, b);
   }
 
   private async readJson5<T>(configPath: string): Promise<T> {

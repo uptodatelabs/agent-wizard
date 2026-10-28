@@ -24,6 +24,10 @@ export interface Agent {
   instructions: string;
   tools: string[];
   guardrails: Guardrail[];
+  /** Tool-specific extras collected by the wizard (e.g. Aider `architect`,
+   *  Hermes `reasoning_effort`). Adapters read these in `fromAgentConfig` so
+   *  user answers are no longer silently dropped. */
+  settings?: Record<string, unknown>;
 }
 
 export type AgentRole = 'reviewer' | 'coder' | 'debugger' | 'tester';

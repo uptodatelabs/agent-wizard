@@ -19,15 +19,19 @@ export const Dashboard: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [editor, setEditor] = useState<AgentEditorPort | null>(null);
   const [editorAgentId, setEditorAgentId] = useState('');
+  // Ink owns stdout, so `console.error` would corrupt the rendered frame.
+  // Surface refresh failures as state and render them instead.
+  const [error, setError] = useState<string | null>(null);
   const { exit } = useApp();
 
   const fetchData = useCallback(async () => {
     try {
       const newData = await statusAdapter.getAllStatuses();
       setData(newData);
+      setError(null);
       setLoading(false);
-    } catch (error) {
-      console.error('Failed to fetch status:', error);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
       setLoading(false);
     }
   }, []);
@@ -119,6 +123,12 @@ export const Dashboard: React.FC = () => {
           Total Agents: <Text color="cyan">{data.totalAgents}</Text>
         </Text>
       </Box>
+
+      {error && (
+        <Box marginBottom={1}>
+          <Text color="red">⚠ Status refresh failed: {error} (press r to retry)</Text>
+        </Box>
+      )}
 
       {view === 'tools' && (
         <Box flexDirection="column">

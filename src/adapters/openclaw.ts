@@ -1,5 +1,6 @@
 import { AgentConfig, Agent } from '../core/types';
 import JSON5 from 'json5';
+import { backupFile } from '../core/backup';
 import { openclawConfigSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface OpenClawConfig {
@@ -106,7 +107,21 @@ export class OpenClawAdapter {
     const openclawConfig = this.fromAgentConfig(config, existing);
     
     await fs.mkdir(path.dirname(configPath), { recursive: true });
-    await fs.writeFile(configPath, JSON5.stringify(openclawConfig, null, 2));
+    // Never overwrite an existing config without a restore point.
+    await backupFile(configPath);
+    await fs.writeFile(configPath, this.serialize(openclawConfig));
+  }
+
+  /**
+   * Single source of truth for the on-disk OpenClaw format.
+   *
+   * `ProfileSync` injects this as well, so `init`/`configure` (adapter path)
+   * and `sync to-tools` (sync path) can no longer write the same file with
+   * different serializers — previously the adapter used JSON5 and sync used
+   * JSON, which meant a sync silently dropped JSON5-only formatting.
+   */
+  serialize(value: unknown): string {
+    return JSON5.stringify(value, null, 2);
   }
 
   private async readRaw(configPath: string): Promise<Partial<OpenClawConfig>> {

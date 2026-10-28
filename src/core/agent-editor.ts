@@ -10,6 +10,13 @@
  * tree and back, preserving unknown keys on write (non-destructive).
  */
 
+import { OpenClawWizard } from './openclaw-wizard';
+import { HermesAgentEditor } from './editors/hermes-editor';
+import { ClaudeCodeAgentEditor } from './editors/claude-code-editor';
+import { CursorAgentEditor } from './editors/cursor-editor';
+import { CopilotAgentEditor } from './editors/copilot-editor';
+import { AiderAgentEditor } from './editors/aider-editor';
+
 export type AgentSettings = Record<string, unknown>;
 
 export interface AgentListItem {
@@ -105,12 +112,6 @@ export function parseValue(raw: string): unknown {
   return raw;
 }
 
-import { OpenClawWizard } from './openclaw-wizard';
-import { HermesAgentEditor } from './editors/hermes-editor';
-import { ClaudeCodeAgentEditor } from './editors/claude-code-editor';
-import { CursorAgentEditor } from './editors/cursor-editor';
-import { CopilotAgentEditor } from './editors/copilot-editor';
-import { AiderAgentEditor } from './editors/aider-editor';
 
 /**
  * Get an agent editor for the given tool. Returns null when the tool has no

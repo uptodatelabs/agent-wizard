@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import { backupFile } from '../core/backup';
 import { hermesConfigSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface HermesConfig {
@@ -91,6 +92,8 @@ export class HermesAdapter {
     const hermesConfig = this.fromAgentConfig(config, existing);
     
     await fs.mkdir(path.dirname(configPath), { recursive: true });
+    // Never overwrite an existing config without a restore point.
+    await backupFile(configPath);
     await fs.writeFile(configPath, yaml.stringify(hermesConfig));
   }
 
@@ -206,7 +209,14 @@ export class HermesAdapter {
         ...existing.agent,
         max_turns: existing.agent?.max_turns || 60,
         verbose: existing.agent?.verbose || false,
-        reasoning_effort: existing.agent?.reasoning_effort || 'medium',
+        // Wizard answer wins over the existing value: the prompt's whole
+        // purpose is to let the user change it (it used to be ignored).
+        reasoning_effort:
+          (typeof config.agents[0]?.settings?.reasoning_effort === 'string'
+            ? (config.agents[0].settings.reasoning_effort as string)
+            : undefined) ||
+          existing.agent?.reasoning_effort ||
+          'medium',
         personalities,
       },
     };
@@ -252,6 +262,7 @@ export class HermesAdapter {
     const configPath = path.join(os.homedir(), '.hermes', 'profiles', profileName, 'config.yaml');
     
     await fs.mkdir(path.dirname(configPath), { recursive: true });
+    await backupFile(configPath);
     await fs.writeFile(configPath, yaml.stringify(hermesConfig));
   }
 }

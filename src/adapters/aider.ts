@@ -1,4 +1,5 @@
 import { AgentConfig, Agent } from '../core/types';
+import { backupFile } from '../core/backup';
 import { aiderConfigSchema, validateWithSchema } from '../schemas/tool-schemas';
 
 export interface AiderConfig {
@@ -144,6 +145,8 @@ export class AiderAdapter {
     const existing = await this.readRaw();
     const aiderConfig = this.fromAgentConfig(config, existing);
     
+    // Never overwrite an existing config without a restore point.
+    await backupFile(configPath);
     await fs.writeFile(configPath, yaml.stringify(aiderConfig));
   }
 
@@ -225,6 +228,20 @@ export class AiderAdapter {
       if (config.agents[0].instructions) {
         aiderConfig['commit-prompt'] = config.agents[0].instructions;
       }
+
+      // Apply wizard answers collected in `Agent.settings`. These were
+      // previously dropped: the wizard asked for architect mode and then
+      // returned an Agent without it, so the file never changed.
+      const settings = config.agents[0].settings ?? {};
+      if (typeof settings.architect === 'boolean') {
+        aiderConfig.architect = settings.architect;
+      }
+      if (typeof settings.editorModel === 'string' && settings.editorModel.length > 0) {
+        aiderConfig['editor-model'] = settings.editorModel;
+      }
+      if (typeof settings.reasoningEffort === 'string' && settings.reasoningEffort.length > 0) {
+        aiderConfig['reasoning-effort'] = settings.reasoningEffort;
+      }
     }
 
     // Only set sensible defaults when the key isn't already configured
@@ -274,6 +291,7 @@ export class AiderAdapter {
     const yaml = await import('yaml');
     
     const configPath = path.join(process.cwd(), '.aider.conf.yml');
+    await backupFile(configPath);
     await fs.writeFile(configPath, yaml.stringify(config));
   }
 

@@ -168,14 +168,20 @@ describe('ClaudeCodeAdapter', () => {
 describe('AiderAdapter', () => {
   it('merge preserves existing keys and only fills defaults when absent', async () => {
     const adapter = new AiderAdapter();
-    const configPath = path.join(process.cwd(), '.aider.conf.yml');
-    await writeText(configPath, 'model: gpt-4o\nmap-tokens: 1024\n');
-    // agent without an explicit model -> existing model must be preserved
-    await adapter.write(makeAgentConfig({ agents: [{ id: 'aider', name: 'A', role: 'coder', model: '', instructions: '', tools: [], guardrails: [] }] }));
-    const raw = await fs.readFile(configPath, 'utf-8');
-    expect(raw).toContain('gpt-4o');
-    expect(raw).toContain('map-tokens');
-    await rm(configPath, { force: true });
+    // AiderAdapter resolves its file from process.cwd(). Point it at the temp
+    // dir so the suite never drops .aider.conf.yml / .bak-* into the repo root.
+    const cwdSpy = vi.spyOn(process, 'cwd').mockReturnValue(homeDir);
+    try {
+      const configPath = path.join(homeDir, '.aider.conf.yml');
+      await writeText(configPath, 'model: gpt-4o\nmap-tokens: 1024\n');
+      // agent without an explicit model -> existing model must be preserved
+      await adapter.write(makeAgentConfig({ agents: [{ id: 'aider', name: 'A', role: 'coder', model: '', instructions: '', tools: [], guardrails: [] }] }));
+      const raw = await fs.readFile(configPath, 'utf-8');
+      expect(raw).toContain('gpt-4o');
+      expect(raw).toContain('map-tokens');
+    } finally {
+      cwdSpy.mockRestore();
+    }
   });
 });
 

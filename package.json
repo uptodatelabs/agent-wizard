@@ -59,7 +59,7 @@
   },
   "homepage": "https://github.com/uptodatelabs/agent-wizard#readme",
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=20.0.0"
   },
   "devDependencies": {
     "@types/inquirer": "^9.0.10",
@@ -76,7 +76,7 @@
   "dependencies": {
     "chalk": "^4.1.2",
     "commander": "^12.0.0",
-    "ink": "^7.1.1",
+    "ink": "^6.5.1",
     "inquirer": "^9.0.0",
     "json5": "^2.2.3",
     "ora": "^5.4.1",

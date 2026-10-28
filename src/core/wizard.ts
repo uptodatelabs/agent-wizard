@@ -9,11 +9,21 @@ import { ClaudeCodeAdapter } from '../adapters/claude-code';
 import { CursorAdapter } from '../adapters/cursor';
 import { CopilotAdapter } from '../adapters/copilot';
 import { AiderAdapter } from '../adapters/aider';
+import {
+  OPENCLAW_MODELS,
+  HERMES_MODELS,
+  CLAUDE_CODE_MODELS,
+  AIDER_MODELS,
+  HERMES_REASONING_EFFORTS,
+} from './models';
 
 export interface WizardOptions {
   projectInfo: ProjectInfo;
   selectedTools: string[];
   config: AgentConfig;
+  /** true when the user declined the final confirmation. Callers must not
+   *  write anything in that case. */
+  cancelled?: boolean;
 }
 
 export class ConfigWizard {
@@ -36,7 +46,10 @@ export class ConfigWizard {
     const config = await this.configureTools(selectedTools, projectInfo);
 
     // Step 4: Review and confirm
-    await this.reviewConfig(config, selectedTools);
+    const confirmed = await this.reviewConfig(config, selectedTools);
+    if (!confirmed) {
+      return { projectInfo, selectedTools, config, cancelled: true };
+    }
 
     return { projectInfo, selectedTools, config };
   }
@@ -47,7 +60,7 @@ export class ConfigWizard {
     console.log(`  Type: ${chalk.green(info.type)}`);
     console.log(`  Languages: ${chalk.green(info.languages.join(', ') || 'Unknown')}`);
     console.log(`  Frameworks: ${chalk.green(info.frameworks.join(', ') || 'None detected')}`);
-    
+
     const detectedTools: string[] = [];
     if (info.hasOpenClaw) detectedTools.push('OpenClaw');
     if (info.hasHermes) detectedTools.push('Hermes');
@@ -89,7 +102,7 @@ export class ConfigWizard {
 
     for (const tool of tools) {
       console.log(chalk.bold(`\n⚙️  Configuring ${tool}...`));
-      
+
       const agent = await this.configureTool(tool);
       if (agent) {
         agents.push(agent);
@@ -158,12 +171,7 @@ export class ConfigWizard {
         type: 'list',
         name: 'model',
         message: 'Select model:',
-        choices: [
-          'anthropic/claude-sonnet-4-6',
-          'anthropic/claude-opus-4-6',
-          'openai/gpt-4o',
-          'openai/gpt-4-turbo',
-        ],
+        choices: [...OPENCLAW_MODELS],
       },
     ]);
 
@@ -190,18 +198,13 @@ export class ConfigWizard {
         type: 'list',
         name: 'model',
         message: 'Select model:',
-        choices: [
-          'anthropic/claude-opus-4.6',
-          'anthropic/claude-sonnet-4.6',
-          'openai/gpt-4o',
-          'openai/gpt-4-turbo',
-        ],
+        choices: [...HERMES_MODELS],
       },
       {
         type: 'list',
         name: 'reasoningEffort',
         message: 'Reasoning effort:',
-        choices: ['low', 'medium', 'high'],
+        choices: [...HERMES_REASONING_EFFORTS],
         default: 'medium',
       },
     ]);
@@ -214,6 +217,8 @@ export class ConfigWizard {
       instructions: '',
       tools: [],
       guardrails: [],
+      // Previously dropped on the floor: the adapter now consumes this.
+      settings: { reasoning_effort: answers.reasoningEffort },
     };
   }
 
@@ -229,11 +234,7 @@ export class ConfigWizard {
         type: 'list',
         name: 'model',
         message: 'Select model:',
-        choices: [
-          'claude-sonnet-4-20250514',
-          'claude-opus-4-20250514',
-          'claude-haiku-3-20240307',
-        ],
+        choices: [...CLAUDE_CODE_MODELS],
       },
     ]);
 
@@ -312,14 +313,7 @@ export class ConfigWizard {
         type: 'list',
         name: 'model',
         message: 'Select model:',
-        choices: [
-          'sonnet',
-          'opus',
-          'haiku',
-          'gpt-4o',
-          'gpt-4-turbo',
-          'deepseek/deepseek-chat',
-        ],
+        choices: [...AIDER_MODELS],
       },
       {
         type: 'confirm',
@@ -337,6 +331,8 @@ export class ConfigWizard {
       instructions: '',
       tools: [],
       guardrails: [],
+      // Previously dropped on the floor: the adapter now consumes this.
+      settings: { architect: answers.architect },
     };
   }
 
@@ -365,11 +361,19 @@ export class ConfigWizard {
     };
   }
 
-  private async reviewConfig(config: AgentConfig, tools: string[]): Promise<void> {
+  /**
+   * Print the summary and ask for confirmation.
+   * @returns true to apply, false to cancel.
+   *
+   * This used to call `process.exit(0)` on cancel, which killed the host
+   * process for library consumers of the exported `AgentWizard` API. Exiting
+   * is now the CLI's job; the library returns `cancelled: true` instead.
+   */
+  private async reviewConfig(config: AgentConfig, tools: string[]): Promise<boolean> {
     console.log(chalk.bold('\n📋 Configuration Summary:'));
     console.log(`  Tools: ${chalk.green(tools.join(', '))}`);
     console.log(`  Agents: ${chalk.green(config.agents.length.toString())}`);
-    
+
     if (config.agents.length > 0) {
       console.log(chalk.bold('\n  Agents:'));
       for (const agent of config.agents) {
@@ -402,8 +406,9 @@ export class ConfigWizard {
 
     if (!confirmed) {
       console.log(chalk.yellow('\nConfiguration cancelled.'));
-      process.exit(0);
+      return false;
     }
+    return true;
   }
 
   async writeConfig(config: AgentConfig, tools: string[]): Promise<void> {

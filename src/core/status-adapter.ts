@@ -309,24 +309,19 @@ export class StatusAdapter {
       
       for (const file of mdcFiles) {
         const content = await fs.readFile(path.join(rulesDir, file), 'utf-8');
-        const frontmatterMatch = content.match(/^---\n([\s\S]*?)\n---/);
-        
-        if (frontmatterMatch) {
-          const frontmatter = frontmatterMatch[1];
-          const descriptionMatch = frontmatter.match(/description:\s*"?(.*?)"?\s*$/m);
-          const alwaysApplyMatch = frontmatter.match(/alwaysApply:\s*(true|false)$/m);
-          
-          const isAlwaysApply = alwaysApplyMatch?.[1] === 'true';
-          
-          agents.push({
-            id: file,
-            name: descriptionMatch?.[1] || file,
-            role: 'rule',
-            enabled: true,
-            status: 'active',
-            config: { alwaysApply: isAlwaysApply },
-          });
-        }
+        // Reuse the adapter's parser: a second regex copy in here meant
+        // fixing the adapter's frontmatter handling never reached status.
+        const rule = this.cursorAdapter.parseRule(content);
+        if (!rule) continue;
+
+        agents.push({
+          id: file,
+          name: rule.description || file,
+          role: 'rule',
+          enabled: true,
+          status: 'active',
+          config: { alwaysApply: rule.alwaysApply },
+        });
       }
     } catch {
       // Rules directory doesn't exist

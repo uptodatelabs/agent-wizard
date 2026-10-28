@@ -8,12 +8,7 @@ import { ProjectDetector } from '../core/detector';
 import { ProfileManagerImpl } from '../core/profile-manager';
 import { ProfileSync } from '../core/sync';
 import { StatusAdapter } from '../core/status-adapter';
-import { OpenClawAdapter } from '../adapters/openclaw';
-import { HermesAdapter } from '../adapters/hermes';
-import { ClaudeCodeAdapter } from '../adapters/claude-code';
-import { CursorAdapter } from '../adapters/cursor';
-import { CopilotAdapter } from '../adapters/copilot';
-import { AiderAdapter } from '../adapters/aider';
+import { getAllAdapters } from '../adapters/index';
 import { OpenClawWizard } from '../core/openclaw-wizard';
 import { createAgentEditor } from '../core/agent-editor';
 import { isSupportedTool } from '../core/tools';
@@ -46,15 +41,7 @@ program
     const wizard = new ConfigWizard();
     
     try {
-      const { selectedTools, config } = await wizard.run();
-      await wizard.writeConfig(config, selectedTools);
-      
-      console.log(chalk.bold.green('\n✅ Configuration complete!\n'));
-      console.log('Configured tools:');
-      for (const tool of selectedTools) {
-        console.log(`  - ${chalk.green(tool)}`);
-      }
-      console.log('\nRun ' + chalk.cyan('agent-wizard validate') + ' to verify your configuration.\n');
+      await writeConfiguredTools(wizard, 'init');
     } catch (error) {
       console.error(chalk.red('\n❌ Error:'), error);
       process.exit(1);
@@ -119,10 +106,7 @@ program
     const wizard = new ConfigWizard();
     
     try {
-      const { selectedTools, config } = await wizard.run();
-      await wizard.writeConfig(config, selectedTools);
-      
-      console.log(chalk.bold.green('\n✅ Configuration updated!\n'));
+      await writeConfiguredTools(wizard, 'configure');
     } catch (error) {
       console.error(chalk.red('\n❌ Error:'), error);
       process.exit(1);
@@ -136,14 +120,7 @@ program
   .action(async () => {
     console.log(chalk.bold.cyan('\n✓ AgentWizard Validate\n'));
     
-    const adapters = [
-      { name: 'OpenClaw', adapter: new OpenClawAdapter() },
-      { name: 'Hermes', adapter: new HermesAdapter() },
-      { name: 'Claude Code', adapter: new ClaudeCodeAdapter() },
-      { name: 'Cursor', adapter: new CursorAdapter() },
-      { name: 'Copilot', adapter: new CopilotAdapter() },
-      { name: 'Aider', adapter: new AiderAdapter() },
-    ];
+    const adapters = getAllAdapters().map(({ label, adapter }) => ({ name: label, adapter }));
     
     let hasErrors = false;
     
@@ -184,14 +161,7 @@ program
   .action(async () => {
     console.log(chalk.bold.cyan('\n📋 AgentWizard List\n'));
     
-    const adapters = [
-      { name: 'OpenClaw', adapter: new OpenClawAdapter() },
-      { name: 'Hermes', adapter: new HermesAdapter() },
-      { name: 'Claude Code', adapter: new ClaudeCodeAdapter() },
-      { name: 'Cursor', adapter: new CursorAdapter() },
-      { name: 'Copilot', adapter: new CopilotAdapter() },
-      { name: 'Aider', adapter: new AiderAdapter() },
-    ];
+    const adapters = getAllAdapters().map(({ label, adapter }) => ({ name: label, adapter }));
     
     for (const { name, adapter } of adapters) {
       const detected = await adapter.detect();
@@ -562,6 +532,11 @@ syncCmd
             console.log(`  ${chalk.green('✓')} ${tool}`);
           }
         }
+        // Report no-ops explicitly: previously an already-matching config was
+        // silently omitted, so a successful run looked like a failure.
+        if (result.unchanged.length > 0) {
+          console.log(chalk.gray(`Already up to date: ${result.unchanged.join(', ')}`));
+        }
       }
 
       if (result.failed.length > 0) {
@@ -743,6 +718,48 @@ statusCmd
       process.exit(1);
     }
   });
+
+/**
+ * Shared tail of `init` and `configure`.
+ *
+ * Both actions used to inline the same run → write → report sequence and had
+ * already drifted (different cancellation handling). Keeping one implementation
+ * means a fix applies to both entry points.
+ */
+async function writeConfiguredTools(
+  wizard: ConfigWizard,
+  mode: 'init' | 'configure',
+): Promise<void> {
+  const { selectedTools, config, cancelled } = await wizard.run();
+
+  if (cancelled) {
+    // Declining the summary must not touch any file. The wizard returns this
+    // flag instead of calling process.exit(0) so library consumers keep their
+    // process alive.
+    console.log(
+      chalk.yellow(
+        mode === 'init'
+          ? '\nConfiguration cancelled. Nothing was written.\n'
+          : '\nConfiguration cancelled — no files were written.\n',
+      ),
+    );
+    return;
+  }
+
+  await wizard.writeConfig(config, selectedTools);
+
+  if (mode === 'configure') {
+    console.log(chalk.bold.green('\n✅ Configuration updated!\n'));
+    return;
+  }
+
+  console.log(chalk.bold.green('\n✅ Configuration complete!\n'));
+  console.log('Configured tools:');
+  for (const tool of selectedTools) {
+    console.log(`  - ${chalk.green(tool)}`);
+  }
+  console.log('\nRun ' + chalk.cyan('agent-wizard validate') + ' to verify your configuration.\n');
+}
 
 function getStatusIcon(status: string): string {
   switch (status) {
