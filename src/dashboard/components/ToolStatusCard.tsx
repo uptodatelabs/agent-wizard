@@ -1,127 +1,136 @@
 import React from 'react';
 import { Box, Text } from 'ink';
-import { AgentStatus } from '../../core/status';
+import type { AgentStatus } from '../../core/status';
+import type { ThemeColors } from '../../tui/theme';
+import { Panel } from '../../tui/components/Panel';
+import { StatusBadge } from '../../tui/components/StatusBadge';
+import { glyph, theme, truncate } from '../../tui/theme';
 
-interface ToolStatusCardProps {
+export interface ToolStatusCardProps {
   status: AgentStatus;
-  selected: boolean;
+  selected?: boolean;
+  width?: number;
+  /** Agent names to preview before collapsing into `+N more`. */
+  maxAgents?: number;
 }
 
-export const ToolStatusCard: React.FC<ToolStatusCardProps> = ({ status, selected }) => {
-  const getStatusColor = (status: string): string => {
-    switch (status) {
-      case 'active':
-        return 'green';
-      case 'configured':
-        return 'yellow';
-      case 'not-configured':
-        return 'gray';
-      case 'error':
-        return 'red';
-      default:
-        return 'gray';
-    }
-  };
+interface DetailRow {
+  label: string;
+  value: string;
+  tone: keyof ThemeColors;
+}
 
-  const getStatusIcon = (status: string): string => {
-    switch (status) {
-      case 'active':
-        return '🟢';
-      case 'configured':
-        return '🟡';
-      case 'not-configured':
-        return '⚪';
-      case 'error':
-        return '🔴';
-      default:
-        return '⚪';
-    }
-  };
+/**
+ * Compact summary card for one tool.
+ *
+ * Every visual decision comes from `src/tui/theme.ts`; the status colour, icon
+ * and label are derived from `describeToolStatus` so this card can never
+ * disagree with the list, the badge or the detail panel.
+ */
+export const ToolStatusCard: React.FC<ToolStatusCardProps> = ({
+  status,
+  selected = false,
+  width,
+  maxAgents = 5,
+}) => {
+  const preview = status.agents.slice(0, maxAgents);
+  const hidden = status.agents.length - preview.length;
 
-  const getStatusLabel = (status: string): string => {
-    switch (status) {
-      case 'active':
-        return 'Active';
-      case 'configured':
-        return 'Configured';
-      case 'not-configured':
-        return 'Not Configured';
-      case 'error':
-        return 'Error';
-      default:
-        return 'Unknown';
-    }
-  };
-
-  const borderColor = selected ? 'cyan' : 'gray';
+  const rows: DetailRow[] = [];
+  if (status.details.scopes && status.details.scopes.length > 0) {
+    rows.push({ label: 'scopes', value: status.details.scopes.join(', '), tone: 'muted' });
+  }
+  if (status.details.rules !== undefined) {
+    rows.push({ label: 'rules', value: String(status.details.rules), tone: 'brand' });
+  }
+  if (status.details.profiles !== undefined) {
+    rows.push({ label: 'profiles', value: String(status.details.profiles), tone: 'brand' });
+  }
+  if (status.details.mcpServers !== undefined) {
+    rows.push({ label: 'mcp', value: String(status.details.mcpServers), tone: 'brand' });
+  }
+  if (status.details.hooks !== undefined) {
+    rows.push({ label: 'hooks', value: String(status.details.hooks), tone: 'brand' });
+  }
+  if (status.details.instructions !== undefined) {
+    rows.push({
+      label: 'instructions',
+      value: status.details.instructions ? 'present' : 'missing',
+      tone: status.details.instructions ? 'success' : 'danger',
+    });
+  }
+  if (status.details.pathInstructions !== undefined) {
+    rows.push({
+      label: 'path rules',
+      value: String(status.details.pathInstructions),
+      tone: 'brand',
+    });
+  }
+  if (status.details.permissions) {
+    rows.push({
+      label: 'permissions',
+      value: `${status.details.permissions.allow} allow ${glyph.sep} ${status.details.permissions.deny} deny`,
+      tone: 'muted',
+    });
+  }
 
   return (
-    <Box
-      flexDirection="column"
-      borderStyle="round"
-      borderColor={borderColor}
-      padding={1}
-      width={30}
+    <Panel
+      title={status.toolName}
+      subtitle={
+        status.agents.length > 0
+          ? `${glyph.sep} ${status.agents.length} ${status.agents.length === 1 ? 'agent' : 'agents'}`
+          : undefined
+      }
+      focused={selected}
+      width={width}
     >
-      {/* Tool Name */}
-      <Text bold color={selected ? 'cyan' : 'white'}>
-        {getStatusIcon(status.status)} {status.toolName}
-      </Text>
+      <Box flexDirection="column">
+        <Box>
+          <StatusBadge status={status.status} />
+          {status.configValid !== null && (
+            <>
+              <Text color={theme.muted}> {glyph.sep} config </Text>
+              <Text color={status.configValid ? theme.success : theme.danger}>
+                {status.configValid ? 'valid' : 'invalid'}
+              </Text>
+            </>
+          )}
+        </Box>
 
-      {/* Status */}
-      <Box marginTop={1}>
-        <Text color="gray">Status: </Text>
-        <Text color={getStatusColor(status.status)}>
-          {getStatusLabel(status.status)}
-        </Text>
+        <Box>
+          <Text color={theme.muted}>path </Text>
+          <Text color={theme.muted}>{truncate(status.configPath, 44)}</Text>
+        </Box>
+
+        {rows.length > 0 && (
+          <Box flexDirection="column" marginTop={1}>
+            {rows.map((row) => (
+              <Box key={row.label}>
+                <Box width={15}>
+                  <Text color={theme.muted}>{row.label}</Text>
+                </Box>
+                <Text color={theme[row.tone]}>{truncate(row.value, 40)}</Text>
+              </Box>
+            ))}
+          </Box>
+        )}
+
+        {preview.length > 0 && (
+          <Box flexDirection="column" marginTop={1}>
+            {preview.map((agent) => (
+              <Box key={agent.id}>
+                <Box width={2}>
+                  <Text color={theme.muted}>{glyph.bullet}</Text>
+                </Box>
+                <Text color={theme.text}>{truncate(agent.name, 22)}</Text>
+                {agent.model ? <Text color={theme.muted}> {truncate(agent.model, 16)}</Text> : null}
+              </Box>
+            ))}
+            {hidden > 0 && <Text color={theme.muted}>+{hidden} more</Text>}
+          </Box>
+        )}
       </Box>
-
-      {/* Agent Count */}
-      <Box>
-        <Text color="gray">Agents: </Text>
-        <Text color="cyan">{status.agents.length}</Text>
-      </Box>
-
-      {/* Config Status - only when a config file is expected/present */}
-      {status.configValid !== null && (
-        <Box>
-          <Text color="gray">Config: </Text>
-          <Text color={status.configValid ? 'green' : 'red'}>
-            {status.configValid ? 'Valid ✓' : 'Invalid ✗'}
-          </Text>
-        </Box>
-      )}
-
-      {/* Additional Details */}
-      {status.details.scopes && (
-        <Box>
-          <Text color="gray">Scopes: </Text>
-          <Text color="gray">{status.details.scopes.join(', ')}</Text>
-        </Box>
-      )}
-
-      {status.details.rules !== undefined && (
-        <Box>
-          <Text color="gray">Rules: </Text>
-          <Text color="cyan">{status.details.rules}</Text>
-        </Box>
-      )}
-
-      {status.details.profiles !== undefined && (
-        <Box>
-          <Text color="gray">Profiles: </Text>
-          <Text color="cyan">{status.details.profiles}</Text>
-        </Box>
-      )}
-
-      {status.details.permissions && (
-        <Box>
-          <Text color="gray">Perms: </Text>
-          <Text color="green">{status.details.permissions.allow}</Text>
-          <Text color="gray">/</Text>
-          <Text color="red">{status.details.permissions.deny}</Text>
-        </Box>
-      )}
-    </Box>
+    </Panel>
   );
 };
