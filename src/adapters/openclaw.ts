@@ -120,7 +120,15 @@ export class OpenClawAdapter {
    * different serializers — previously the adapter used JSON5 and sync used
    * JSON, which meant a sync silently dropped JSON5-only formatting.
    */
-  serialize(value: unknown): string {
+  serialize(value: unknown, style: 'json5' | 'strict' = 'json5'): string {
+    // One implementation, two styles. `init`/`configure` write the documented
+    // JSON5 on-disk format; `sync to-tools` asks for strict JSON so its output
+    // stays readable by plain `JSON.parse` (existing contract) while sharing
+    // this single serializer. Keeping the code in one place is what prevents
+    // the two write paths from drifting apart again.
+    if (style === 'strict') {
+      return JSON.stringify(value, null, 2);
+    }
     return JSON5.stringify(value, null, 2);
   }
 

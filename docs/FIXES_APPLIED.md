@@ -14,12 +14,12 @@
 npm run verify   →  exit 0
   npm run lint       : 0 errors / 0 warnings
   npm run typecheck  : tsc --noEmit 통과
-  npm run test:run   : Test Files 11 passed (11) / Tests 117 passed (117)
+  npm run test:run   : Test Files 11 passed (11) / Tests 118 passed (118)
   npm run build      : CJS + ESM + DTS 모두 success
 ```
 
 **베이스라인 대비:** 작업 착수 시점 `npm run typecheck` 는 **exit=2 (의존성 미설치로 인한 200+ 오류)**,
-테스트는 100 passed(10 files)였다. 현재는 typecheck 0 오류, 117 passed(11 files)로
+테스트는 100 passed(10 files)였다. 현재는 typecheck 0 오류, 118 passed(11 files)로
 **신규 실패 0건, 신규 테스트 +17건**이다.
 
 ---

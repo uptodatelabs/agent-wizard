@@ -230,11 +230,12 @@ export class ProfileSync {
       existing,
       merged,
       options,
-      // Deliberately strict JSON here (the adapter writes JSON5 style): strict
-      // JSON is a valid subset of JSON5, so OpenClaw reads it fine, and staying
-      // strict keeps `sync` output parseable by plain `JSON.parse`. Both paths
-      // preserve every existing key — only the quoting style differs.
-      serialize: (v) => JSON.stringify(v, null, 2),
+      // The adapter owns OpenClaw serialization; only the style differs here.
+      // Strict JSON is a valid subset of JSON5, so OpenClaw reads it fine, and
+      // it keeps `sync` output parseable by plain `JSON.parse`. Because both
+      // write paths now call the same implementation, a future format change
+      // cannot make them disagree about how this file is written.
+      serialize: (v) => this.openclawAdapter.serialize(v, 'strict'),
     });
   }
 

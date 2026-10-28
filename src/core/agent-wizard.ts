@@ -36,10 +36,19 @@ export class AgentWizard {
       projectInfo: options.projectInfo,
       selectedTools: options.selectedTools,
       config: options.config,
+      // Propagate the flag: dropping it here meant a library consumer who
+      // declined the confirmation could still call writeConfig() and have
+      // every file overwritten (the CLI checked `cancelled`, the facade did not).
+      ...(options.cancelled ? { cancelled: true } : {}),
     };
   }
 
   async writeConfig(result: AgentWizardResult): Promise<void> {
+    // Honour the cancellation contract documented on `AgentWizardResult`:
+    // a declined confirmation must never touch the filesystem.
+    if (result.cancelled) {
+      return;
+    }
     await this.wizard.writeConfig(result.config, result.selectedTools);
     this.config = result.config;
   }

@@ -359,8 +359,29 @@ describe('adapters create a restore point before overwriting (P0-1)', () => {
   it('exposes one serializer for OpenClaw so both write paths agree', async () => {
     const { OpenClawAdapter } = await import('../adapters/openclaw');
     const adapter = new OpenClawAdapter();
-    const serialized = adapter.serialize({ agents: { defaults: { workspace: 'w' } } });
-    // JSON5.stringify is the documented on-disk format for openclaw.json.
-    expect(serialized).toContain('workspace');
+    // Default style is the documented JSON5 on-disk format.
+    const json5Text = adapter.serialize({ agents: { defaults: { workspace: 'w' } } });
+    expect(json5Text).toContain('workspace');
+    // Strict style is plain JSON (readable by JSON.parse) — used by sync.
+    const strictText = adapter.serialize({ agents: { defaults: { workspace: 'w' } } }, 'strict');
+    expect(() => JSON.parse(strictText)).not.toThrow();
+  });
+
+  it('writes openclaw.json through the adapter serializer on the sync path too', async () => {
+    const sync = new ProfileSync();
+    await sync.syncProfileToTools(makeProfile([makeAgent()]));
+
+    const configPath = path.join(homeDir, '.openclaw', 'openclaw.json');
+    const raw = await fs.readFile(configPath, 'utf-8');
+
+    const { OpenClawAdapter } = await import('../adapters/openclaw');
+    const adapter = new OpenClawAdapter();
+
+    // Byte-identical to the adapter's own strict output: sync no longer keeps a
+    // second JSON.stringify copy that could drift from the adapter's format.
+    expect(adapter.serialize(JSON.parse(raw), 'strict')).toBe(raw);
+    // OpenClaw (JSON5 reader) must accept what sync wrote.
+    const JSON5 = (await import('json5')).default;
+    expect(() => JSON5.parse(raw)).not.toThrow();
   });
 });

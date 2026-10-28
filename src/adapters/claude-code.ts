@@ -263,6 +263,8 @@ export class ClaudeCodeAdapter {
     }
 
     await fs.mkdir(path.dirname(configPath), { recursive: true });
+    // Scoped writes were the last write path without a restore point.
+    await backupFile(configPath);
     await fs.writeFile(configPath, JSON.stringify(settings, null, 2));
   }
 }
