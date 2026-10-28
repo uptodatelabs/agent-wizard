@@ -15,7 +15,7 @@
 | 3 | **진짜 상태** — 유효성+설치 여부 기반 판정 | ✅ | 스키마 검증 + PATH 바이너리 감지 (테스트 7건) |
 | 4 | **공개 API 동작** — AgentWizard 파사드 실동작 | ✅ | detect/configure/writeConfig/validate/getStatus/listProfiles + 라운드트립 테스트 |
 | 5 | **CLI 오류 처리** — silent failure·경로 주입·exit code 정리 | ✅ | 프로파일명 sanitize, 툴 검증, exit code (테스트 11건) |
-| 6 | **실질 테스트** — 동작 검증 커버리지 | ✅ | **115개 테스트** 전부 통과 (단위+통합+CLI E2E, 11 files) |
+| 6 | **실질 테스트** — 동작 검증 커버리지 | ✅ | **117개 테스트** 전부 통과 (단위+통합+CLI E2E, 11 files) |
 | 7 | **CI 파이프라인** | ✅ | `.github/workflows/ci.yml` (Node 20/22: lint→typecheck→build→test→pack) |
 | 8 | **린트 정상** | ✅ | ESLint 9 flat config, `npm run lint` 통과 |
 | 9 | **npm 배포 준비** | ✅ | `npm pack --dry-run` 검증, prepublishOnly에 전체 게이트 포함 |
@@ -53,7 +53,7 @@
 지원(Phase 13/17), 백업 자동 생성(Phase 16), 범용 에이전트 편집(Phase 15/18),
 Hermes personas 구분(Phase 19) 등.
 
-이번 세션에서 이들 기능이 `npm run verify` 전체 게이트와 115개 테스트로
+이번 세션에서 이들 기능이 `npm run verify` 전체 게이트와 117개 테스트로
 회귀 없이 유지됨을 확인했습니다.
 
 ---
@@ -102,7 +102,7 @@ npm pack --dry-run                                : 15 files, 패키지 내용 �
 
 - [x] 저장소 비공개 유지 (수익화 계획서는 히스토리에 존재하나 비공개 상태)
 - [x] 데이터 안전(병합·백업·dry-run), 진짜 검증/상태, CLI 하드닝 완료
-- [x] 115개 테스트 + CI 파이프라인 + 린트
+- [x] 117개 테스트 + CI 파이프라인 + 린트
 - [x] npm 패키지 내용·스크립트 정리 (`npm pack --dry-run` 확인)
 - [ ] `npm publish` 실행 (npm 인증 토큰 필요)
 - [ ] 모델 ID 공식 문서 대조

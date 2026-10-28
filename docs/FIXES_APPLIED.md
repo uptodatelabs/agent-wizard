@@ -75,7 +75,7 @@ OpenClaw가 그대로 읽는다. JSON5 스타일로 바꾸면 **기존 계약(�
 | `findExecutable()` PATH 동기 3중 루프 | `(PATH, PATHEXT, names)` 키 메모이즈 + `clearExecutableCache()` 제공. 환경이 바뀌면 키가 달라져 재탐색 | `tool-check.ts` read 확인, `status.test.ts` 7건 통과 |
 | 위저드 모델 목록 하드코딩 | `src/core/models.ts` 로 분리(`OPENCLAW_MODELS`/`HERMES_MODELS`/`CLAUDE_CODE_MODELS`/`AIDER_MODELS`/`DEFAULT_MODELS`). `profile-manager.getAgentDefaultSettings()` 도 같은 상수 사용 → 위저드 기본값과 프로파일 기본값의 드리프트 제거 | `models.ts`·`wizard.ts`·`profile-manager.ts` read 확인 |
 | `unchanged` 툴이 사용자에게 "아무것도 안 됨"으로 보임 | `SyncResult.unchanged` 추가 → CLI가 `Already up to date: <tools>` 별도 출력 | `fixes.test.ts` › `reports unchanged tools separately` 통과 |
-| `agent-editor.ts` import 하단 위치 | import 를 파일 상단으로 이동(순환참조 위험·가독성) | **부분 검증** — typecheck/린트는 통과하나 import 물리 위치는 재열람으로 확정하지 않음(아래 §6 참조) |
+| `agent-editor.ts` import 하단 위치 | import 6건을 파일 상단(12-18행)으로 이동 — 순환참조 위험·가독성 | `read src/core/agent-editor.ts` 1-14행에서 상단 배치 확인 |
 
 ---
 
@@ -97,7 +97,6 @@ OpenClaw가 그대로 읽는다. JSON5 스타일로 바꾸면 **기존 계약(�
 - **`npm publish`·GitHub Actions 실행은 하지 않았다.** 로컬 `npm run verify` 만 검증했다.
 - **`core/editors/*` 5개 파일 본문은 여전히 미열람**이다. 이번 수정은 `agent-editor.ts` 의
   팩토리 배선과 백업 호출에 한정되며, 각 편집기 내부 로직은 손대지 않았다.
-- **`agent-editor.ts` import 문의 물리적 위치**는 재열람 차단으로 최종 확인하지 못했다(타입체크·린트는 통과).
 - **`status-adapter.ts` 는 레지스트리(P2-1)로 완전 이관하지 않았다** — 툴별 상태 계산 메서드가
   각자 어댑터 인스턴스를 보유한다. 중복 제거는 Cursor 파서 공유(P2-5)까지만 수행했다.
 - **모델 ID의 공식 문서 대조는 하지 않았다**(기존 후속 과업 항목, 외부 문서 확인 필요).
