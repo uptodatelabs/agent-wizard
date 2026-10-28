@@ -20,7 +20,7 @@ npm run verify   →  exit 0
 
 **베이스라인 대비:** 작업 착수 시점 `npm run typecheck` 는 **exit=2 (의존성 미설치로 인한 200+ 오류)**,
 테스트는 100 passed(10 files)였다. 현재는 typecheck 0 오류, 118 passed(11 files)로
-**신규 실패 0건, 신규 테스트 +17건**이다.
+**신규 실패 0건, 신규 테스트 +18건**이다.
 
 ---
 
@@ -32,10 +32,11 @@ npm run verify   →  exit 0
 | P0-2 | 백업 실패를 무시하고 쓰기 강행 | `core/backup.ts` — `fs.copyFile` 실패를 **던지도록** 변경(문서 계약을 "null = 백업할 대상 없음 / throw = 백업 실패"로 명확화). `sync.ts applyWrite()` 는 예외를 `SyncFailure` 로 승격 | `fixes.test.ts` › `throws when an existing path cannot be backed up` 통과(디렉터리를 백업 대상으로 주입 → reject) |
 | P0-3 | `syncToCursor`/`syncToCopilot` 이 고정 파일명에 써서 last-write-wins | Cursor: `agent-wizard-${sanitizeId(agent.id)}.mdc` 로 **에이전트별 파일 분리**. Copilot: `<!-- agent-wizard:<id> --> … <!-- /agent-wizard:<id> -->` 마커로 **섹션 upsert**(사용자 작성 영역 보존) | `fixes.test.ts` › `writes one Cursor rule file per agent`(2파일 확인), `accumulates Copilot managed sections`(두 마커 공존) 통과 |
 
-**포맷 단일화에 대한 판단 근거:** sync 경로는 `JSON.stringify`(strict JSON)를 유지했다.
-`sync.test.ts` 가 결과를 `JSON.parse` 로 읽고, strict JSON은 JSON5의 부분집합이라
-OpenClaw가 그대로 읽는다. JSON5 스타일로 바꾸면 **기존 계약(테스트)이 깨지므로**
-"동작 불변" 원칙에 따라 유지하고, 코드에 이유를 주석으로 남겼다(`sync.ts`).
+**포맷 단일화에 대한 판단 근거:** sync 경로의 출력 스타일은 `JSON.stringify`(strict JSON)를 유지했다
+(`sync.test.ts` 가 결과를 `JSON.parse` 로 읽는 기존 계약). JSON5 스타일로 바꾸면 그 계약이 깨지므로
+"동작 불변" 원칙에 따라 스타일은 유지하되, **직렬화 구현은 `OpenClawAdapter.serialize(value, style)` 한 곳으로 합쳤다.**
+sync 는 `serialize(v, 'strict')` 를 호출하므로 `JSON.stringify` 사본이 두 곳에 존재하지 않는다 —
+구현이 갈라져 다시 드리프트할 여지를 제거했다(근거: `sync.ts` `serialize: (v) => this.openclawAdapter.serialize(v, 'strict')`).
 
 ---
 
@@ -63,7 +64,7 @@ OpenClaw가 그대로 읽는다. JSON5 스타일로 바꾸면 **기존 계약(�
 | P2-6 | `engines >=18` vs `ink@7`(실제 `node>=22`) 불일치 | **실측**: `npm view ink@7 engines` → 전 버전 `>=22`, `ink@6` → `>=20`. → `ink ^6.5.1`, `engines >=20.0.0`, CI 매트릭스 `[20, 22]` 로 정합 | `npm view` 출력 + `package.json`·`ci.yml` read. `npm install` exit=0, 빌드/테스트 통과 |
 | P2-7 | 백업 무한 누적 | `pruneBackups()` + `DEFAULT_BACKUP_KEEP = 10`, `AGENT_WIZARD_BACKUP_KEEP` env 로 조정(0=비활성). **자체 생성 패턴(`.bak-YYYYMMDD-HHMMSS[-N]`)만** 삭제 대상 | `fixes.test.ts` › `prunes older backups` (keep:2 → 2개 유지) 통과 |
 | P2-8 | `default-profile.txt` 미정규화 | `getDefaultProfile()` 에서 `.trim()` 후 빈 값이면 `'default'` 폴백 | `fixes.test.ts` › `trims a stray newline in default-profile.txt` 통과 |
-| P2-9 | 문서 사실관계(미래 날짜·테스트 수·버전) | `docs/WORK_REPORT.md` — 테스트 수를 **실측값(117)** 으로 정정, 최초 작성일/최종 갱신일 분리 표기. **"미래 날짜" 지적은 재현되지 않음** — 시스템 시계(2026-10-28) 기준 `2026-08-03` 은 과거이므로 오기 아님으로 판정, 표기만 명확화 | `grep` 로 본 문서 기재값 확인. `package.json version 0.1.0` 은 의도적 유지(v1.0은 문서상 등급 표기) |
+| P2-9 | 문서 사실관계(미래 날짜·테스트 수·버전) | `docs/WORK_REPORT.md` — 테스트 수를 **실측값(118)** 으로 정정, 최초 작성일/최종 갱신일 분리 표기. **"미래 날짜" 지적은 재현되지 않음** — 시스템 시계(2026-10-28) 기준 `2026-08-03` 은 과거이므로 오기 아님으로 판정, 표기만 명확화 | `grep` 로 본 문서 기재값 확인. `package.json version 0.1.0` 은 의도적 유지(v1.0은 문서상 등급 표기) |
 
 ---
 
