@@ -17,15 +17,15 @@ AgentWizard is a CLI tool that helps you configure and manage AI coding assistan
 - **Multiple Tools, One Interface**: Configure Claude Code, Cursor, GitHub Copilot, Aider, OpenClaw, and Hermes from a single CLI
 - **Smart Detection**: Automatically detect your project type, tech stack, and existing AI tool configurations
 - **Profile Management**: Create and manage profiles for different projects or workflows
-- **Real-time Dashboard**: Monitor the status of all your AI assistants in one place
+- **Interactive Dashboard**: A design-token based Ink TUI for monitoring and editing every agent in one place
 - **Sync Capabilities**: Keep your configurations in sync across different tools
-- **Non-destructive**: Existing tool configuration is always preserved (merged, never overwritten)
+- **Non-destructive**: Existing tool configuration is always preserved (merged, never overwritten), and every write is preceded by a timestamped backup
 
 ## Installation
 
 ### Prerequisites
 
-- Node.js 18.0.0 or higher
+- **Node.js 20.0.0 or higher** (`engines.node` in `package.json` enforces `>=20.0.0`; CI runs on Node 20 and 22)
 - npm (comes with Node.js)
 
 ### Install
@@ -40,6 +40,12 @@ npm install -g agent-wizard
 agent-wizard --version
 ```
 
+### Run without installing
+
+```bash
+npx agent-wizard detect
+```
+
 ## Quick Start
 
 ### 1. Detect Your Project
@@ -49,6 +55,7 @@ agent-wizard detect
 ```
 
 This will scan your project and show:
+
 - Project type (web, mobile, CLI, library, api, unknown)
 - Programming languages
 - Frameworks
@@ -61,12 +68,15 @@ agent-wizard init
 ```
 
 This launches an interactive wizard that will:
+
 1. Detect your project
 2. Ask which AI tools you want to configure
 3. Guide you through settings for each tool
 4. Apply the configuration (merging into each tool's existing config)
 
 > `agent-wizard configure` runs the exact same interactive flow as `init`.
+
+> `init` and `configure` require an interactive terminal. In CI or a piped shell they exit with a non-zero code and a clear message instead of silently doing nothing. Use `profile create` + `agent add` + `sync to-tools` for non-interactive setups.
 
 ### 3. Check Status
 
@@ -76,13 +86,13 @@ agent-wizard status list
 
 Shows the status of all supported tools and their configurations.
 
-### 4. Launch Dashboard
+### 4. Launch the Dashboard
 
 ```bash
 agent-wizard dashboard
 ```
 
-Opens an interactive dashboard to monitor all your AI assistants.
+Opens an interactive TUI to monitor and edit all of your AI assistants.
 
 ## CLI Commands
 
@@ -110,6 +120,8 @@ Opens an interactive dashboard to monitor all your AI assistants.
 
 Profile names are validated before use: empty names, path separators (`/`, `\`), `.`/`..`, control characters, and leading/trailing whitespace are rejected. This keeps `profile delete`/`import` from ever touching anything outside the profiles directory.
 
+Profile files are also validated on read against a runtime schema (zod), so a hand-edited or truncated profile fails with a clear message instead of propagating `undefined` into a tool config.
+
 ### Agent Management
 
 | Command | Description |
@@ -118,6 +130,8 @@ Profile names are validated before use: empty names, path separators (`/`, `\`),
 | `agent-wizard agent remove <profile> <agentId>` | Remove agent from profile |
 | `agent-wizard agent config <profile> <agentId> <key> <value>` | Update agent setting (dot-notation keys supported, e.g. `terminal.timeout`) |
 | `agent-wizard agent list <profile>` | List agents in profile |
+
+Adding the same tool twice to one profile is supported: the second agent is stored with a suffixed id (`tool-2`, `tool-3`, …) so both keep independent settings.
 
 ### OpenClaw Direct Agent Management
 
@@ -155,7 +169,7 @@ all of them.
 | `openclaw` | each entry in `agents.list` (rich JSON object) | ✅ |
 | `hermes` | each `agent.personalities` entry (name → instructions) | ✅ |
 | `claude-code` | the single `settings.json` (user scope) | key edit only |
-| `cursor` | each `.cursor/rules/*.mdc` file | ✅ |
+| `cursor` | each `.cursor/rules/agent-wizard-*.mdc` file | ✅ |
 | `copilot` | `copilot-instructions.md` + `.github/instructions/*.instructions.md` | ✅ |
 | `aider` | the single `.aider.conf.yml` | key edit only |
 
@@ -181,21 +195,39 @@ agent-wizard agents add cursor my-rule -n "My Rule"
 agent-wizard agents show openclaw coder
 ```
 
-### Dashboard — interactive agent editing
+> **Multiple agents per tool are kept separate.** Cursor gets one rule file per agent
+> (`agent-wizard-<id>.mdc`), and Copilot writes each agent into its own
+> `<!-- agent-wizard:<id> -->`…`<!-- /agent-wizard:<id> -->` block inside
+> `copilot-instructions.md`. Editing one agent never overwrites another, and any
+> content you wrote outside those blocks is preserved.
 
-`agent-wizard dashboard` now supports a 3-level navigation for **any tool that
-implements the agent editor port**:
+### Dashboard
 
-1. **Tool grid** — `↑↓` to select a tool, `Enter` to open its agents
-2. **Agent list** — `↑↓` to select an agent, `Enter` to edit it
-3. **Agent editor** — shows the agent's full raw settings as a flat key list; you can
-   - `e` edit a key's value
-   - `a` add a new key (dot-notation, e.g. `tools.profile`)
-   - `d` delete a key
-   - `q`/`Enter` to go back one level
+`agent-wizard dashboard` is an interactive TUI built on Ink, styled through the design
+tokens in [`src/tui/theme.ts`](src/tui/theme.ts). The full specification lives in
+[`docs/TUI_DESIGN.md`](docs/TUI_DESIGN.md).
+
+**Layout**
+
+- **≥ 96 columns** — two panes: the tool list on the left, the selected tool's card on the right.
+- **< 96 columns** — collapses to a single column so nothing is clipped.
+- The first load shows a skeleton with the final layout height (no frame jump); background
+  refreshes show a header spinner instead.
+- Status refreshes automatically every 30 seconds, or immediately with `r`.
+- Transient results appear in a toast that clears itself after a few seconds.
+
+**Keys**
+
+| View | Keys |
+|------|------|
+| Tools | `↑`/`↓` navigate · `Enter` open agents · `a` action palette · `r` refresh · `?` help · `q` quit |
+| Agents | `↑`/`↓` select · `Enter` edit settings · `a` action palette · `Esc` back to tools · `r` refresh · `?` help |
+| Editor | `↑`/`↓` select setting · `e` edit value · `a` add key (dot-notation, e.g. `tools.profile`) · `d` delete key · `Esc` back to agents · `?` help |
+| Global | `?` toggle help · `Ctrl+C` quit immediately |
 
 All edits are written back non-destructively (existing keys and unrelated config
-preserved).
+preserved). Input is scoped to the active view, so typing `q` into a field cannot also
+navigate away.
 
 ### Status & Monitoring
 
@@ -231,6 +263,7 @@ Every write is preceded by an automatic timestamped backup (`<file>.bak-YYYYMMDD
 agent-wizard sync to-tools my-project --dry-run
 #   ＋ openclaw: ~/.openclaw/openclaw.json (will be created)
 #   ↻ claude-code: ~/.claude/settings.json (will be modified)
+#   ＝ aider: .aider.conf.yml (unchanged)
 
 # Then apply
 agent-wizard sync to-tools my-project
@@ -246,13 +279,13 @@ If any tool fails to sync, the command exits with a non-zero code and prints the
 | **Hermes** | YAML | `~/.hermes/config.yaml` | ✅ Supported |
 | **Claude Code** | JSON | `~/.claude/settings.json` (user) or `.claude/settings.json` (project) | ✅ Supported |
 | **Cursor** | Markdown (.mdc) | `.cursor/rules/` | ✅ Supported |
-| **GitHub Copilot** | Markdown | `.github/copilot-instructions.md` | ✅ Supported |
+| **GitHub Copilot** | Markdown | `.github/copilot-instructions.md`, `.github/instructions/*.instructions.md` | ✅ Supported |
 | **Aider** | YAML | `.aider.conf.yml` (cwd or home) | ✅ Supported |
 
 ### Notes on configuration locations
 
 - **OpenClaw**, **Hermes**, and **Claude Code** are user-global tools. AgentWizard reads/writes their config in your home directory (`~`). Claude Code also supports a project-scoped `.claude/settings.json` for detection.
-- **Cursor**, **GitHub Copilot**, and **Aider** are project-scoped. AgentWizard reads/writes them relative to the current working directory.
+- **Cursor**, **GitHub Copilot**, and **Aider** are project-scoped. AgentWizard reads/writes them **relative to the current working directory**, so running the CLI inside a different project targets that project's files.
 
 ## Non-destructive configuration
 
@@ -260,8 +293,15 @@ AgentWizard never destroys your existing tool configuration:
 
 - When writing to OpenClaw, Hermes, Claude Code, or Aider, the existing file is read first and your new settings are **merged** into it. Untouched keys (channels, providers, mcp servers, hooks, sandbox, env, etc.) are preserved.
 - For Cursor, AgentWizard writes dedicated `agent-wizard-*.mdc` rule files, leaving your other rules untouched.
-- For Copilot, pre-existing custom instructions above the AgentWizard-managed section are preserved.
+- For Copilot, pre-existing custom instructions outside the AgentWizard-managed blocks are preserved.
 - User-supplied secrets (API keys, bot tokens) in config files are left as-is; AgentWizard does not regenerate or overwrite them.
+
+### Backup safety
+
+- Every configuration write is preceded by a timestamped copy (`<file>.bak-YYYYMMDD-HHMMSS`), so any change can be reverted by hand.
+- **A failed backup aborts the write.** If the backup cannot be created (permissions, disk full, …), AgentWizard stops with an error rather than overwriting your config with no restore point.
+- Retention is bounded: the newest **10** backups per file are kept and older ones are pruned. Only files matching AgentWizard's own `.bak-<timestamp>[-N]` pattern are ever deleted.
+- Declining the confirmation prompt in the wizard (or cancelling) leaves the filesystem untouched — including when AgentWizard is used as a library.
 
 ## `validate` behavior
 
@@ -305,12 +345,22 @@ agent-wizard sync to-tools my-project
 # Launch the dashboard
 agent-wizard dashboard
 
-# Navigation:
-# - Arrow keys: Navigate between tools
-# - Enter: View details
-# - r: Refresh status
-# - q: Quit
+# Navigation (see the table above for the full list):
+# - ↑/↓      move within the current list
+# - Enter    drill in (tools → agents → editor)
+# - a        contextual action palette
+# - Esc      back one level
+# - r        refresh status now (otherwise every 30s)
+# - ?        full keyboard help
+# - q        quit (in the tool list)
 ```
+
+## Environment Variables
+
+| Variable | Default | Effect |
+|----------|---------|--------|
+| `AGENT_WIZARD_BACKUP_KEEP` | `10` | Backups retained per config file. `0` disables pruning. |
+| `NO_COLOR` | unset | When set, the dashboard renders without colour. Colour is also disabled automatically when stdout is not a TTY, so piping to a file or `tee` stays readable. |
 
 ## Project Structure
 
@@ -318,6 +368,7 @@ agent-wizard dashboard
 agent-wizard/
 ├── src/
 │   ├── adapters/           # Tool-specific adapters (detect/read/write/validate + merge)
+│   │   ├── index.ts        # single adapter registry
 │   │   ├── openclaw.ts
 │   │   ├── hermes.ts
 │   │   ├── claude-code.ts
@@ -326,28 +377,37 @@ agent-wizard/
 │   │   └── aider.ts
 │   ├── core/               # Core functionality
 │   │   ├── types.ts
+│   │   ├── models.ts       # model catalogue
 │   │   ├── detector.ts
 │   │   ├── wizard.ts
-│   │   ├── agent-wizard.ts
+│   │   ├── agent-wizard.ts # library facade
 │   │   ├── profile.ts
 │   │   ├── profile-manager.ts
-│   │   ├── sync.ts          # merge-based sync + --dry-run
-│   │   ├── backup.ts        # timestamped backups before writes
-│   │   ├── tool-check.ts    # PATH binary detection for status
-│   │   ├── tools.ts         # supported-tool registry
+│   │   ├── sync.ts         # merge-based sync + --dry-run
+│   │   ├── backup.ts       # timestamped backups + retention
+│   │   ├── tool-check.ts   # PATH binary detection for status
+│   │   ├── tools.ts        # supported-tool registry
 │   │   ├── status.ts
 │   │   ├── status-adapter.ts
-│   │   ├── agent-editor.ts  # tool-agnostic agent editor port
-│   │   └── editors/         # per-tool editor implementations
-│   ├── schemas/             # zod schemas for tool config files
-│   │   └── tool-schemas.ts
+│   │   ├── agent-editor.ts # tool-agnostic agent editor port
+│   │   ├── agent-wizard.ts
+│   │   └── editors/        # per-tool editor implementations
+│   ├── schemas/            # zod schemas for tool configs + profiles
+│   │   ├── tool-schemas.ts
+│   │   └── profile-schema.ts
+│   ├── tui/                # design system for the dashboard
+│   │   ├── theme.ts        # semantic colour/glyph/spacing tokens
+│   │   ├── keymap.ts       # single source of truth for shortcuts + help
+│   │   ├── components/     # Panel, Header, GradientText, ToolList, Spinner, ...
+│   │   └── hooks/          # useListNavigation, useSpinner, useTerminalSize, useToast
 │   ├── dashboard/          # Ink dashboard
 │   │   ├── index.tsx
 │   │   └── components/
 │   ├── cli/                # CLI entry point
 │   │   └── index.ts
-│   └── __tests__/          # Tests (unit + integration + CLI E2E)
+│   └── __tests__/          # Tests (unit + integration + CLI E2E + TUI)
 ├── dist/                   # Compiled output
+├── docs/                   # Design notes and work reports (not published)
 ├── package.json
 ├── tsconfig.json
 └── README.md
@@ -368,7 +428,7 @@ npm install
 # Build the project
 npm run build
 
-# Run tests
+# Run the test suite once
 npm test
 ```
 
@@ -378,21 +438,22 @@ npm test
 |--------|-------------|
 | `npm run build` | Build the project (CJS + ESM + type declarations) |
 | `npm run dev` | Watch mode for development |
-| `npm test` | Run tests (vitest) |
-| `npm run test:run` | Run tests once |
+| `npm test` | Run the test suite **once** (`vitest run`) |
+| `npm run test:watch` | Run tests in watch mode |
 | `npm run test:coverage` | Run tests with coverage report |
-| `npm run typecheck` | Type checking (tsc --noEmit) |
-| `npm run lint` | Linting (ESLint 9 flat config) |
+| `npm run typecheck` | Type checking (`tsc --noEmit`) |
+| `npm run lint` | Linting (ESLint 9 flat config, zero warnings allowed) |
 | `npm run verify` | Full gate: lint + typecheck + test + build |
 
 ### Architecture
 
-AgentWizard follows a modular architecture:
+AgentWizard follows a layered architecture:
 
-- **Adapters**: Each supported tool has its own adapter that handles configuration reading/writing/validation with non-destructive merging
-- **Core**: Shared functionality like project detection, profile management, status monitoring, and sync
-- **Dashboard**: Interactive TUI built with Ink (React for CLIs)
-- **CLI**: Command-line interface built with Commander.js
+- **Adapters**: Each supported tool has its own adapter that handles configuration reading/writing/validation with non-destructive merging. A single registry (`src/adapters/index.ts`) is the only place a tool is added.
+- **Core**: Shared functionality like project detection, profile management, status monitoring, sync, and the agent editor port.
+- **TUI**: A design-token layer (`src/tui/`) — semantic colours, glyphs, spacing, keymap and hooks — that the dashboard is built from. Components never name raw colours, so retheming happens in one file.
+- **Dashboard**: Interactive TUI built with Ink (React for CLIs).
+- **CLI**: Command-line interface built with Commander.js.
 
 ## Contributing
 
@@ -408,6 +469,8 @@ Contributions are welcome! Please follow these steps:
 
 - Write tests for new features
 - Keep `npm run verify` green (lint + typecheck + test + build) before pushing
+- Add colour/glyph/spacing to `src/tui/theme.ts` rather than inlining it in a component
+- Add a shortcut to `src/tui/keymap.ts` rather than handling it separately in the UI
 - Update documentation as needed
 
 ## Support & Donate
